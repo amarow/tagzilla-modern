@@ -6,24 +6,30 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.appStateRepository = exports.tagRepository = exports.fileRepository = exports.scopeRepository = void 0;
 const client_1 = require("./client");
 const path_1 = __importDefault(require("path"));
+// --- Statements ---
+// We prepare statements once for efficiency where possible
 exports.scopeRepository = {
     async create(userId, directoryPath, name) {
-        return client_1.prisma.scope.create({
-            data: {
-                userId,
-                path: directoryPath,
-                name: name || path_1.default.basename(directoryPath),
-            },
-        });
+        const scopeName = name || path_1.default.basename(directoryPath);
+        const stmt = client_1.db.prepare('INSERT INTO Scope (userId, path, name) VALUES (?, ?, ?)');
+        const info = stmt.run(userId, directoryPath, scopeName);
+        return { id: Number(info.lastInsertRowid), userId, path: directoryPath, name: scopeName, createdAt: new Date() };
     },
     async getAll(userId) {
         if (userId) {
-            return client_1.prisma.scope.findMany({ where: { userId } });
+            const stmt = client_1.db.prepare('SELECT * FROM Scope WHERE userId = ?');
+            return stmt.all(userId);
         }
-        return client_1.prisma.scope.findMany();
+        const stmt = client_1.db.prepare('SELECT * FROM Scope');
+        return stmt.all();
     },
     async getById(id) {
-        return client_1.prisma.scope.findUnique({ where: { id } });
+        const stmt = client_1.db.prepare('SELECT * FROM Scope WHERE id = ?');
+        return stmt.get(id);
+    },
+    async delete(userId, id) {
+        const stmt = client_1.db.prepare('DELETE FROM Scope WHERE id = ? AND userId = ?');
+        stmt.run(id, userId);
     }
 };
 exports.fileRepository = {
@@ -42,112 +48,162 @@ exports.fileRepository = {
             mimeType = 'image/png';
         if (extension === '.docx')
             mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-        // Use native upsert which is safer and handles concurrency
-        return client_1.prisma.fileHandle.upsert({
-            where: { scopeId_path: { scopeId, path: filePath } },
-            update: {
-                size: stats.size,
-                updatedAt: new Date(),
-            },
-            create: {
-                path: filePath,
-                name: filename,
-                extension,
-                size: stats.size,
-                mimeType,
-                scopeId,
-            }
+        // Using UPSERT syntax (INSERT OR REPLACE / ON CONFLICT)
+        // SQLite supports ON CONFLICT(scopeId, path) DO UPDATE
+        const sql = `
+      INSERT INTO FileHandle (scopeId, path, name, extension, size, mimeType, updatedAt)
+      VALUES (@scopeId, @path, @name, @extension, @size, @mimeType, CURRENT_TIMESTAMP)
+      ON CONFLICT(scopeId, path) DO UPDATE SET
+        size = excluded.size,
+        updatedAt = CURRENT_TIMESTAMP
+    `;
+        const stmt = client_1.db.prepare(sql);
+        stmt.run({
+            scopeId,
+            path: filePath,
+            name: filename,
+            extension,
+            size: stats.size,
+            mimeType
         });
     },
     async removeFile(scopeId, filePath) {
-        // Find file by scope and path
-        const file = await client_1.prisma.fileHandle.findUnique({
-            where: { scopeId_path: { scopeId, path: filePath } }
-        });
-        if (file) {
-            return client_1.prisma.fileHandle.delete({ where: { id: file.id } });
-        }
+        const stmt = client_1.db.prepare('DELETE FROM FileHandle WHERE scopeId = ? AND path = ?');
+        stmt.run(scopeId, filePath);
     },
     // Get all files for a specific user (through user's scopes)
     async getAll(userId) {
-        return client_1.prisma.fileHandle.findMany({
-            where: {
-                scope: { userId }
-            },
-            include: { tags: true },
-            orderBy: { updatedAt: 'desc' }
-        });
+        // Need a JOIN to check scope ownership
+        const sql = `
+        SELECT f.*, 
+               json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color)) as tags_json
+        FROM FileHandle f
+        JOIN Scope s ON f.scopeId = s.id
+        LEFT JOIN _FileHandleToTag ft ON f.id = ft.A
+        LEFT JOIN Tag t ON ft.B = t.id
+        WHERE s.userId = ?
+        GROUP BY f.id
+        ORDER BY f.updatedAt DESC
+      `;
+        const stmt = client_1.db.prepare(sql);
+        const rows = stmt.all(userId);
+        // Parse the JSON tags (sqlite returns string)
+        return rows.map((row) => ({
+            ...row,
+            tags: JSON.parse(row.tags_json).filter((t) => t.id !== null)
+        }));
     },
     async addTagToFile(userId, fileId, tagName) {
-        // 1. Ensure file belongs to user (security check, implied by logic but good to have)
-        // 2. Find or create tag for THIS user
-        const file = await client_1.prisma.fileHandle.findUnique({ where: { id: fileId }, include: { scope: true } });
-        if (!file || file.scope.userId !== userId)
-            throw new Error("File access denied");
-        return client_1.prisma.fileHandle.update({
-            where: { id: fileId },
-            data: {
-                tags: {
-                    connectOrCreate: {
-                        where: { userId_name: { userId, name: tagName } },
-                        create: { name: tagName, userId }
-                    }
-                }
-            },
-            include: { tags: true }
+        // Transaction to ensure atomicity
+        const runTransaction = client_1.db.transaction(() => {
+            // 1. Verify access
+            const fileStmt = client_1.db.prepare(`
+            SELECT f.id FROM FileHandle f 
+            JOIN Scope s ON f.scopeId = s.id 
+            WHERE f.id = ? AND s.userId = ?
+        `);
+            const file = fileStmt.get(fileId, userId);
+            if (!file)
+                throw new Error("File access denied");
+            // 2. Find or Create Tag
+            const upsertTag = client_1.db.prepare(`
+            INSERT INTO Tag (userId, name) VALUES (?, ?)
+            ON CONFLICT(userId, name) DO NOTHING
+        `);
+            upsertTag.run(userId, tagName);
+            const getTag = client_1.db.prepare('SELECT id FROM Tag WHERE userId = ? AND name = ?');
+            const tag = getTag.get(userId, tagName);
+            // 3. Link File to Tag
+            const link = client_1.db.prepare(`
+            INSERT OR IGNORE INTO _FileHandleToTag (A, B) VALUES (?, ?)
+        `);
+            link.run(fileId, tag.id);
+            return this.getFileWithTags(fileId);
         });
+        return runTransaction();
     },
     async removeTagFromFile(userId, fileId, tagId) {
-        const file = await client_1.prisma.fileHandle.findUnique({ where: { id: fileId }, include: { scope: true } });
-        if (!file || file.scope.userId !== userId)
-            throw new Error("File access denied");
-        return client_1.prisma.fileHandle.update({
-            where: { id: fileId },
-            data: {
-                tags: {
-                    disconnect: { id: tagId }
-                }
-            },
-            include: { tags: true }
+        const runTransaction = client_1.db.transaction(() => {
+            // 1. Verify access
+            const fileStmt = client_1.db.prepare(`
+            SELECT f.id FROM FileHandle f 
+            JOIN Scope s ON f.scopeId = s.id 
+            WHERE f.id = ? AND s.userId = ?
+        `);
+            const file = fileStmt.get(fileId, userId);
+            if (!file)
+                throw new Error("File access denied");
+            // 2. Unlink
+            const unlink = client_1.db.prepare('DELETE FROM _FileHandleToTag WHERE A = ? AND B = ?');
+            unlink.run(fileId, tagId);
+            return this.getFileWithTags(fileId);
         });
+        return runTransaction();
+    },
+    // Helper
+    getFileWithTags(fileId) {
+        const sql = `
+        SELECT f.*, 
+               json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color)) as tags_json
+        FROM FileHandle f
+        LEFT JOIN _FileHandleToTag ft ON f.id = ft.A
+        LEFT JOIN Tag t ON ft.B = t.id
+        WHERE f.id = ?
+        GROUP BY f.id
+      `;
+        const row = client_1.db.prepare(sql).get(fileId);
+        if (!row)
+            return null;
+        return {
+            ...row,
+            tags: JSON.parse(row.tags_json).filter((t) => t.id !== null)
+        };
     }
 };
 exports.tagRepository = {
     async getAll(userId) {
-        return client_1.prisma.tag.findMany({
-            where: { userId },
-            include: {
-                _count: {
-                    select: { files: true }
-                }
-            },
-            orderBy: { name: 'asc' }
-        });
+        // Count files linked
+        const sql = `
+        SELECT t.*, COUNT(ft.A) as fileCount
+        FROM Tag t
+        LEFT JOIN _FileHandleToTag ft ON t.id = ft.B
+        WHERE t.userId = ?
+        GROUP BY t.id
+        ORDER BY t.name ASC
+    `;
+        const stmt = client_1.db.prepare(sql);
+        const rows = stmt.all(userId);
+        // Map to structure compatible with frontend expectation { ..., _count: { files: N } }
+        return rows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            color: r.color,
+            userId: r.userId,
+            _count: { files: r.fileCount }
+        }));
     },
     async create(userId, name, color) {
-        return client_1.prisma.tag.create({
-            data: { name, color, userId }
-        });
+        const stmt = client_1.db.prepare('INSERT INTO Tag (userId, name, color) VALUES (?, ?, ?)');
+        const info = stmt.run(userId, name, color);
+        return { id: Number(info.lastInsertRowid), userId, name, color };
     },
     async delete(userId, id) {
-        // Ensure tag belongs to user
-        const tag = await client_1.prisma.tag.findUnique({ where: { id } });
-        if (!tag || tag.userId !== userId)
-            throw new Error("Access denied");
-        return client_1.prisma.tag.delete({ where: { id } });
+        const stmt = client_1.db.prepare('DELETE FROM Tag WHERE id = ? AND userId = ?');
+        stmt.run(id, userId);
     }
 };
 exports.appStateRepository = {
     async get(userId) {
-        const item = await client_1.prisma.appState.findUnique({ where: { userId } });
-        return item ? JSON.parse(item.value) : null;
+        const stmt = client_1.db.prepare('SELECT value FROM AppState WHERE userId = ?');
+        const row = stmt.get(userId);
+        return row ? JSON.parse(row.value) : null;
     },
     async set(userId, value) {
         const strValue = JSON.stringify(value);
-        return client_1.prisma.appState.upsert({
-            where: { userId },
-            update: { value: strValue },
-            create: { userId, value: strValue }
-        });
+        const sql = `
+        INSERT INTO AppState (userId, value) VALUES (?, ?)
+        ON CONFLICT(userId) DO UPDATE SET value = excluded.value
+    `;
+        client_1.db.prepare(sql).run(userId, strValue);
     }
 };

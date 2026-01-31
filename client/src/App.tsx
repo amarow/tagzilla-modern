@@ -1,8 +1,9 @@
 import { AppShell, Burger, Group, Text, ScrollArea, Button, Table, Loader, Alert, Stack, Badge, ActionIcon, TextInput, NavLink, Portal, Tooltip, useMantineColorScheme, Card, Title, PasswordInput, Center, Container, Modal, Box } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconTags, IconFiles, IconPlus, IconAlertCircle, IconX, IconSearch, IconFolder, IconExternalLink, IconTrash, IconSun, IconMoon, IconLogout, IconBrush, IconBan, IconArrowUp, IconCheck, IconHome } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { IconTags, IconFiles, IconPlus, IconAlertCircle, IconX, IconSearch, IconFolder, IconExternalLink, IconTrash, IconSun, IconMoon, IconLogout, IconBrush, IconBan, IconArrowUp, IconCheck, IconHome, IconRefresh } from '@tabler/icons-react';
+import { useEffect, useState, useRef } from 'react';
 import { useAppStore } from './store';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, type DragEndEvent } from '@dnd-kit/core';
 import { TagItem, FileRow } from './components/DndComponents';
 
@@ -13,7 +14,7 @@ export default function App() {
     isAuthenticated, login, register, logout, error: storeError,
     files, scopes, tags, isLoading, error, 
     selectedScopeId, selectedTagId, searchQuery, activeStampTagId,
-    init, addScope, addTagToFile, removeTagFromFile, createTag, deleteTag, openFile,
+    init, addScope, refreshScope, deleteScope, addTagToFile, removeTagFromFile, createTag, deleteTag, openFile,
     setScopeFilter, setTagFilter, setSearchQuery, setStampMode
   } = useAppStore();
   
@@ -216,70 +217,17 @@ export default function App() {
     return 0;
   });
 
-  const rows = sortedFiles.map((file) => (
-    <FileRow key={file.id} file={file}>
-      <Table.Td 
-        style={{ cursor: activeStampTagId ? 'copy' : 'default' }}
-        onClick={(e: React.MouseEvent) => {
-            if (activeStampTagId) {
-                e.stopPropagation();
-                const tag = tags.find(t => t.id === activeStampTagId);
-                if (tag) addTagToFile(file.id, tag.name);
-            }
-        }}
-      >
-        <Group gap="xs" wrap="nowrap">
-            <ActionIcon variant="subtle" color="gray" onClick={(e) => { e.stopPropagation(); openFile(file.id); }} title="Open in default app">
-                <IconExternalLink size={16} />
-            </ActionIcon>
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-                <Text size="sm" fw={500} style={{ wordBreak: 'break-all', cursor: activeStampTagId ? 'copy' : 'pointer' }} onClick={(e) => {
-                    if (activeStampTagId) {
-                         e.stopPropagation();
-                         const tag = tags.find(t => t.id === activeStampTagId);
-                         if (tag) addTagToFile(file.id, tag.name);
-                    } else {
-                        openFile(file.id);
-                    }
-                }}>
-                    {file.name}
-                </Text>
-                <Text size="xs" c="dimmed" style={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {file.path}
-                </Text>
-            </div>
-        </Group>
-      </Table.Td>
-      <Table.Td
-        style={{ cursor: activeStampTagId ? 'copy' : 'default' }}
-        onClick={(e: React.MouseEvent) => {
-            if (activeStampTagId) {
-                e.stopPropagation();
-                const tag = tags.find(t => t.id === activeStampTagId);
-                if (tag) addTagToFile(file.id, tag.name);
-            }
-        }}
-      >
-        <Group gap={5}>
-          {file.tags.map((tag: any) => (
-            <Badge 
-              key={tag.id} 
-              variant="light" 
-              rightSection={
-                <ActionIcon size="xs" color="blue" variant="transparent" onClick={(e) => { e.stopPropagation(); removeTagFromFile(file.id, tag.id); }}>
-                  <IconX size={10} />
-                </ActionIcon>
-              }
-            >
-              {tag.name}
-            </Badge>
-          ))}
-        </Group>
-      </Table.Td>
-      <Table.Td>{(file.size / 1024).toFixed(1)} KB</Table.Td>
-      <Table.Td>{new Date(file.updatedAt).toLocaleDateString()}</Table.Td>
-    </FileRow>
-  ));
+  // Virtualization Setup
+  const parentRef = useRef<HTMLDivElement>(null);
+  
+  const rowVirtualizer = useVirtualizer({
+    count: sortedFiles.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 60, // approximate row height
+    overscan: 5,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -353,6 +301,30 @@ export default function App() {
                  label={scope.name}
                  active={selectedScopeId === scope.id}
                  onClick={() => setScopeFilter(scope.id)}
+                 rightSection={
+                    <Group gap={4}>
+                        <ActionIcon 
+                            variant="transparent" 
+                            size="sm" 
+                            onClick={(e) => { e.stopPropagation(); refreshScope(scope.id); }}
+                            title="Update Files"
+                        >
+                            <IconRefresh size={14} />
+                        </ActionIcon>
+                        <ActionIcon 
+                            variant="transparent" 
+                            size="sm" 
+                            color="red"
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                if(confirm('Delete scope?')) deleteScope(scope.id); 
+                            }}
+                            title="Remove Scope"
+                        >
+                            <IconTrash size={14} />
+                        </ActionIcon>
+                    </Group>
+                 }
                  variant="light"
                  mb={2}
                />
@@ -434,7 +406,9 @@ export default function App() {
         <Group mb="md" justify="space-between">
            <Group>
              <IconFiles size={20} />
-             <Text fw={500}>Files ({filteredFiles.length} / {files.length})</Text>
+             <Text fw={500}>
+                Files ({filteredFiles.length} / {files.length}) 
+             </Text>
              {selectedTagId && <Badge color="blue">Tag Filter Active</Badge>}
              {selectedScopeId && <Badge color="green">Scope Filter Active</Badge>}
            </Group>
@@ -447,23 +421,110 @@ export default function App() {
           </Alert>
         )}
 
-        <ScrollArea h="calc(100vh - 160px)">
-          <Table verticalSpacing="xs" striped highlightOnHover>
-            <Table.Thead>
+        <div 
+          ref={parentRef} 
+          style={{ 
+            height: 'calc(100vh - 160px)', 
+            overflow: 'auto',
+            border: '1px solid var(--mantine-color-default-border)',
+            borderRadius: '4px'
+          }}
+        >
+          <Table verticalSpacing="xs" striped highlightOnHover style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+            <Table.Thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'var(--mantine-color-body)' }}>
               <Table.Tr>
-                <Table.Th style={{ cursor: 'pointer' }} onClick={() => handleSort('name')}>
+                <Table.Th style={{ cursor: 'pointer', width: '50%' }} onClick={() => handleSort('name')}>
                   Name {sortBy === 'name' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
                 </Table.Th>
-                <Table.Th>Tags</Table.Th>
-                <Table.Th style={{ cursor: 'pointer' }} onClick={() => handleSort('size')}>
+                <Table.Th style={{ width: '25%' }}>Tags</Table.Th>
+                <Table.Th style={{ cursor: 'pointer', width: '10%' }} onClick={() => handleSort('size')}>
                   Size {sortBy === 'size' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
                 </Table.Th>
-                <Table.Th style={{ cursor: 'pointer' }} onClick={() => handleSort('updatedAt')}>
+                <Table.Th style={{ cursor: 'pointer', width: '15%' }} onClick={() => handleSort('updatedAt')}>
                   Updated {sortBy === 'updatedAt' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
                 </Table.Th>
               </Table.Tr>
             </Table.Thead>
-            <Table.Tbody>{rows}</Table.Tbody>
+            <Table.Tbody>
+               {virtualItems.length > 0 && (
+                  <tr>
+                      <td style={{ height: virtualItems[0]?.start || 0, padding: 0, border: 0 }} colSpan={4} />
+                  </tr>
+               )}
+               {virtualItems.map((virtualRow) => {
+                 const file = sortedFiles[virtualRow.index];
+                 if (!file) return null;
+                 return (
+                    <FileRow key={file.id} file={file} data-index={virtualRow.index}>
+                        <Table.Td 
+                            style={{ cursor: activeStampTagId ? 'copy' : 'default' }}
+                            onClick={(e: React.MouseEvent) => {
+                                if (activeStampTagId) {
+                                    e.stopPropagation();
+                                    const tag = tags.find(t => t.id === activeStampTagId);
+                                    if (tag) addTagToFile(file.id, tag.name);
+                                }
+                            }}
+                        >
+                            <Group gap="xs" wrap="nowrap">
+                                <ActionIcon variant="subtle" color="gray" onClick={(e) => { e.stopPropagation(); openFile(file.id); }} title="Open in default app">
+                                    <IconExternalLink size={16} />
+                                </ActionIcon>
+                                <div style={{ flex: 1, overflow: 'hidden' }}>
+                                    <Text size="sm" fw={500} style={{ wordBreak: 'break-all', cursor: activeStampTagId ? 'copy' : 'pointer' }} onClick={(e) => {
+                                        if (activeStampTagId) {
+                                            e.stopPropagation();
+                                            const tag = tags.find(t => t.id === activeStampTagId);
+                                            if (tag) addTagToFile(file.id, tag.name);
+                                        } else {
+                                            openFile(file.id);
+                                        }
+                                    }}>
+                                        {file.name}
+                                    </Text>
+                                    <Text size="xs" c="dimmed" style={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {file.path}
+                                    </Text>
+                                </div>
+                            </Group>
+                        </Table.Td>
+                        <Table.Td
+                            style={{ cursor: activeStampTagId ? 'copy' : 'default' }}
+                            onClick={(e: React.MouseEvent) => {
+                                if (activeStampTagId) {
+                                    e.stopPropagation();
+                                    const tag = tags.find(t => t.id === activeStampTagId);
+                                    if (tag) addTagToFile(file.id, tag.name);
+                                }
+                            }}
+                        >
+                            <Group gap={5}>
+                            {file.tags.map((tag: any) => (
+                                <Badge 
+                                key={tag.id} 
+                                variant="light" 
+                                rightSection={
+                                    <ActionIcon size="xs" color="blue" variant="transparent" onClick={(e) => { e.stopPropagation(); removeTagFromFile(file.id, tag.id); }}>
+                                    <IconX size={10} />
+                                    </ActionIcon>
+                                }
+                                >
+                                {tag.name}
+                                </Badge>
+                            ))}
+                            </Group>
+                        </Table.Td>
+                        <Table.Td>{(file.size / 1024).toFixed(1)} KB</Table.Td>
+                        <Table.Td>{new Date(file.updatedAt).toLocaleDateString()}</Table.Td>
+                    </FileRow>
+                 );
+               })}
+               {virtualItems.length > 0 && (
+                  <tr>
+                      <td style={{ height: rowVirtualizer.getTotalSize() - (virtualItems[virtualItems.length - 1]?.end || 0), padding: 0, border: 0 }} colSpan={4} />
+                  </tr>
+               )}
+            </Table.Tbody>
           </Table>
           
           {!isLoading && filteredFiles.length === 0 && (
@@ -471,7 +532,7 @@ export default function App() {
               <Text c="dimmed">No files match your filters.</Text>
             </Stack>
           )}
-        </ScrollArea>
+        </div>
       </AppShell.Main>
 
       <DragOverlay>

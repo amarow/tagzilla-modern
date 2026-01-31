@@ -11,12 +11,13 @@ const SECRET_KEY = process.env.JWT_SECRET || 'super-secret-key-change-me';
 exports.authService = {
     async register(username, password) {
         const hashedPassword = await bcryptjs_1.default.hash(password, 10);
-        return client_1.prisma.user.create({
-            data: { username, password: hashedPassword },
-        });
+        const stmt = client_1.db.prepare('INSERT INTO User (username, password) VALUES (?, ?)');
+        const info = stmt.run(username, hashedPassword);
+        return { id: Number(info.lastInsertRowid), username };
     },
     async login(username, password) {
-        const user = await client_1.prisma.user.findUnique({ where: { username } });
+        const stmt = client_1.db.prepare('SELECT * FROM User WHERE username = ?');
+        const user = stmt.get(username);
         if (!user)
             return null;
         const valid = await bcryptjs_1.default.compare(password, user.password);

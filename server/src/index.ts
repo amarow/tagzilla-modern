@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { prisma } from './db/client';
+import { db } from './db/client';
 import { crawlerService } from './services/crawler';
 import { scopeRepository, fileRepository, tagRepository, appStateRepository } from './db/repository';
 import { exec, spawn } from 'child_process';
@@ -11,6 +11,8 @@ import os from 'os';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+console.log("!!! SERVER STARTUP - ASYNC CRAWLER VERSION " + Date.now() + " !!!");
 
 app.use(cors());
 app.use(express.json());
@@ -96,9 +98,9 @@ app.post('/api/login', async (req, res) => {
 
 app.get('/status', authenticateToken, async (req, res) => {
   try {
-    const fileCount = await prisma.fileHandle.count(); // Global count, maybe scope to user?
-    const scopeCount = await prisma.scope.count();
-    res.json({ status: 'ok', fileCount, scopeCount });
+    const fileCount = db.prepare('SELECT COUNT(*) as count FROM FileHandle').get() as { count: number };
+    const scopeCount = db.prepare('SELECT COUNT(*) as count FROM Scope').get() as { count: number };
+    res.json({ status: 'ok', fileCount: fileCount.count, scopeCount: scopeCount.count });
   } catch (error) {
     res.status(500).json({ error: 'Database connection failed' });
   }
@@ -147,6 +149,40 @@ app.post('/api/scopes', authenticateToken, async (req, res) => {
     }
 });
 
+app.post('/api/scopes/:id/refresh', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const { id } = req.params;
+        console.log(`[API] Refresh requested for scope ${id} by user ${userId}`);
+        const scope = await scopeRepository.getById(Number(id)) as any;
+        if (!scope || scope.userId !== userId) {
+            res.status(403).json({ error: 'Access denied' });
+            return;
+        }
+
+        // Trigger scan in background (Fire and Forget)
+        console.log(`[API] Triggering background scan for scope ${id}`);
+        crawlerService.scanScope(scope.id, scope.path).catch(err => {
+            console.error(`[API] Background scan failed for scope ${scope.id}:`, err);
+        });
+        
+        res.json({ success: true, message: 'Scan started in background' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/scopes/:id', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const { id } = req.params;
+        await scopeRepository.delete(userId, Number(id));
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Files
 app.get('/api/files', authenticateToken, async (req, res) => {
     const userId = (req as AuthRequest).user!.id;
@@ -158,7 +194,7 @@ app.post('/api/files/:id/open', authenticateToken, async (req, res) => {
     try {
         // TODO: Ensure file belongs to user (scope check) - implicitly safe via local exec but good practice
         const { id } = req.params;
-        const file = await prisma.fileHandle.findUnique({ where: { id: Number(id) } });
+        const file: any = db.prepare('SELECT * FROM FileHandle WHERE id = ?').get(id);
         
         if (!file) {
             res.status(404).json({ error: 'File not found' });

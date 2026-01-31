@@ -62,6 +62,8 @@ interface AppState {
   fetchTags: () => Promise<void>;
   
   addScope: (path: string) => Promise<void>;
+  deleteScope: (id: number) => Promise<void>;
+  refreshScope: (id: number) => Promise<void>;
   addTagToFile: (fileId: number, tagName: string) => Promise<void>;
   removeTagFromFile: (fileId: number, tagId: number) => Promise<void>;
   createTag: (name: string, color?: string) => Promise<void>;
@@ -257,6 +259,41 @@ export const useAppStore = create<AppState>()(
               throw new Error(errData.error || 'Failed to add scope');
           }
           await get().fetchScopes();
+          await get().fetchFiles();
+          set({ isLoading: false, error: null });
+        } catch (error: any) {
+          set({ error: error.message, isLoading: false });
+        }
+      },
+
+      deleteScope: async (id: number) => {
+        set({ isLoading: true });
+        try {
+          const response = await authFetch(`${API_BASE}/api/scopes/${id}`, get().token, {
+            method: 'DELETE'
+          });
+          if (!response.ok) {
+              throw new Error('Failed to delete scope');
+          }
+          if (get().selectedScopeId === id) get().setScopeFilter(null);
+          await get().fetchScopes();
+          await get().fetchFiles();
+          set({ isLoading: false, error: null });
+        } catch (error: any) {
+          set({ error: error.message, isLoading: false });
+        }
+      },
+
+      refreshScope: async (id: number) => {
+        set({ isLoading: true });
+        try {
+          const response = await authFetch(`${API_BASE}/api/scopes/${id}/refresh`, get().token, {
+            method: 'POST'
+          });
+          if (!response.ok) {
+              const errData = await response.json();
+              throw new Error(errData.error || 'Failed to refresh scope');
+          }
           await get().fetchFiles();
           set({ isLoading: false, error: null });
         } catch (error: any) {
