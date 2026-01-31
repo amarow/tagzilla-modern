@@ -1,0 +1,74 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       Int      @id @default(autoincrement())
+  username String   @unique
+  password String
+  scopes   Scope[]
+  tags     Tag[]
+  appState AppState?
+}
+
+model Scope {
+  id        Int      @id @default(autoincrement())
+  path      String
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  files     FileHandle[]
+
+  @@unique([userId, path]) // Paths should be unique per user
+}
+
+model FileHandle {
+  id        Int      @id @default(autoincrement())
+  path      String
+  name      String
+  extension String
+  size      Int
+  mimeType  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  scopeId   Int
+  scope     Scope    @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+  
+  tags      Tag[]
+
+  @@unique([scopeId, path])
+}
+
+model Tag {
+  id    Int    @id @default(autoincrement())
+  name  String
+  color String?
+  
+  userId Int
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  files FileHandle[]
+
+  @@unique([userId, name]) // Tags unique per user
+}
+
+model AppState {
+  id    Int    @id @default(autoincrement())
+  value String // JSON string
+  
+  userId Int   @unique
+  user   User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
