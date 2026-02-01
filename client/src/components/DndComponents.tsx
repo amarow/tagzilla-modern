@@ -1,9 +1,7 @@
-import React from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
-import { Box } from '@mantine/core';
 
 // Ein Tag in der Sidebar, der gezogen werden kann UND ein Ziel für Files ist
-export function TagItem({ tag, children, isSelected, onClick }: any) {
+export function TagItem({ tag, children, onClick }: any) {
   // Draggable Setup (Wir ziehen den Tag)
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `tag-${tag.id}`,
@@ -24,7 +22,7 @@ export function TagItem({ tag, children, isSelected, onClick }: any) {
 
   const style = {
     opacity: isDragging ? 0.5 : 1,
-    border: isOver ? '2px dashed #228be6' : '1px solid transparent', // Visual feedback when hovering with file
+    border: isOver ? '2px dashed var(--mantine-primary-color-filled)' : '1px solid transparent', // Visual feedback when hovering with file
     borderRadius: '4px',
     cursor: 'grab'
   };
@@ -57,7 +55,7 @@ export function FileRow({ file, children }: any) {
 
   const style = {
     opacity: isDragging ? 0.5 : 1,
-    backgroundColor: isOver ? 'rgba(34, 139, 230, 0.1)' : undefined, // Visual feedback when hovering with tag
+    backgroundColor: isOver ? 'var(--mantine-primary-color-light)' : undefined, // Visual feedback when hovering with tag
   };
 
   return (

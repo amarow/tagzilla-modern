@@ -1,1 +1,12 @@
+:root {
+  --mantine-color-body: #f5f5f7;
+}
 
+[data-mantine-color-scheme="dark"] {
+  --mantine-color-body: #1d1d1f;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

@@ -1,6 +1,6 @@
-import { AppShell, Burger, Group, Text, ScrollArea, Button, Loader, Alert, Stack, Badge, ActionIcon, TextInput, NavLink, useMantineColorScheme, Card, Title, PasswordInput, Container, Modal, ColorInput, Popover, ColorSwatch, Center } from '@mantine/core';
+import { AppShell, Burger, Group, Text, ScrollArea, Button, Stack, Badge, ActionIcon, TextInput, NavLink, useMantineColorScheme, Card, PasswordInput, Container, Modal, ColorSwatch, Alert, Center } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconTags, IconPlus, IconAlertCircle, IconX, IconSearch, IconSun, IconMoon, IconLogout, IconBrush, IconBan, IconTrash, IconSettings, IconPencil, IconCheck, IconLanguage } from '@tabler/icons-react';
+import { IconTags, IconPlus, IconX, IconSearch, IconSun, IconMoon, IconLogout, IconTrash, IconSettings, IconPencil, IconCheck } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { useAppStore } from './store';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, type DragEndEvent } from '@dnd-kit/core';
@@ -143,11 +143,19 @@ export default function App() {
     }
   };
 
+  const logo = (
+    <Text fw={900} size="lg" style={{ cursor: 'pointer', letterSpacing: -0.5 }} onClick={() => navigate('/')}>
+      {['T', 'a', 'g', 'Z', 'i', 'l', 'l', 'a'].map((char, i) => (
+        <span key={i} style={{ color: TAG_COLORS[i % TAG_COLORS.length] }}>{char}</span>
+      ))}
+    </Text>
+  );
+
   if (!isAuthenticated) {
       return (
           <Container size="xs" mt="xl">
               <Card withBorder shadow="sm" p="lg" radius="md">
-                  <Title order={2} ta="center" mb="lg">{t.appName}</Title>
+                  <Center mb="lg">{logo}</Center>
                   <Stack>
                       {storeError && <Alert color="red" title="Error">{storeError}</Alert>}
                       <TextInput 
@@ -192,8 +200,9 @@ export default function App() {
         <Group h="100%" px="md" justify="space-between">
           <Group>
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <Text fw={700} size="lg" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>{t.appName}</Text>
+            {logo}
           </Group>
+
           
           <Group>
             <TextInput 
@@ -231,7 +240,6 @@ export default function App() {
                 size="lg" 
                 aria-label={t.settings}
                 title={t.settings}
-                color={location.pathname === '/settings' ? 'blue' : undefined}
             >
                 <IconSettings size={18} />
             </ActionIcon>
@@ -263,7 +271,7 @@ export default function App() {
                 onChange={(e) => setNewTagInput(e.currentTarget.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreateTag()}
                 rightSection={
-                    <ActionIcon variant="transparent" color="blue" onClick={handleCreateTag} title={t.createTag}>
+                    <ActionIcon variant="transparent" onClick={handleCreateTag} title={t.createTag}>
                         <IconPlus size={16} />
                     </ActionIcon>
                 }
@@ -277,7 +285,6 @@ export default function App() {
                  leftSection={<IconTags size={16} />}
                  active={!selectedTagId && location.pathname === '/'}
                  onClick={() => { setTagFilter(null); navigate('/'); }}
-                 variant="light"
                  mb={4}
                />
               {tags.map(tag => (
@@ -289,26 +296,30 @@ export default function App() {
                 >
                     <Group gap={0} wrap="nowrap">
                         <Button 
-                        variant={selectedTagId === tag.id ? "filled" : "light"}
-                        color={tag.color || (selectedTagId === tag.id ? "blue" : "gray")}
+                        variant={selectedTagId === tag.id ? "filled" : "subtle"}
+                        color={selectedTagId === tag.id ? (tag.color || "appleBlue") : "gray"}
                         fullWidth 
                         justify="space-between" 
                         size="xs"
-                        rightSection={<Badge size="xs" variant="transparent" color="dark" style={{ mixBlendMode: 'multiply' }}>{tag._count?.files}</Badge>}
+                        leftSection={
+                            selectedTagId !== tag.id && tag.color ? 
+                            <ColorSwatch color={tag.color} size={10} /> : null
+                        }
+                        rightSection={<Badge size="xs" variant="transparent" color={selectedTagId === tag.id ? "white" : "gray"}>{tag._count?.files}</Badge>}
                         style={{ 
                             pointerEvents: 'none', 
                             borderTopRightRadius: 0, 
                             borderBottomRightRadius: 0, 
                             borderRight: '1px solid rgba(0,0,0,0.1)',
-                            color: tag.color ? 'white' : undefined
+                            fontWeight: 500
                         }} 
                         >
                         {tag.name}
                         </Button>
                         <ActionIcon 
                             size="30px" 
-                            variant="light"
-                            color="gray"
+                            variant={selectedTagId === tag.id ? "filled" : "subtle"}
+                            color={selectedTagId === tag.id ? (tag.color || "appleBlue") : "gray"}
                             style={{ borderRadius: 0, borderRight: '1px solid rgba(0,0,0,0.1)' }}
                             onClick={(e) => openEditTagModal(tag, e)}
                             title={t.editTag}
@@ -317,8 +328,8 @@ export default function App() {
                         </ActionIcon>
                         <ActionIcon 
                             size="30px" 
-                            variant={selectedTagId === tag.id ? "filled" : "light"}
-                            color={selectedTagId === tag.id ? "blue" : "gray"}
+                            variant={selectedTagId === tag.id ? "filled" : "subtle"}
+                            color={selectedTagId === tag.id ? (tag.color || "appleBlue") : "gray"}
                             style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
                             onClick={(e) => handleDeleteTag(e, tag)}
                             title={t.removeScope}
@@ -345,12 +356,11 @@ export default function App() {
         {activeDragItem ? (
            <Button 
              variant="filled" 
-             color="blue" 
              size="xs" 
              style={{ cursor: 'grabbing', opacity: 0.9 }}
              rightSection={
                  (activeDragItem.type === 'FILE' && selectedFileIds.includes(activeDragItem.id) && selectedFileIds.length > 1) 
-                 ? <Badge size="xs" circle color="white" c="blue">{selectedFileIds.length}</Badge> 
+                 ? <Badge size="xs" circle color="white" c="appleBlue.6">{selectedFileIds.length}</Badge> 
                  : null
              }
            >

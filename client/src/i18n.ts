@@ -1,7 +1,7 @@
 export const translations = {
   en: {
     searchPlaceholder: "Search files...",
-    files: "Files",
+    files: "All Files",
     scopes: "Scopes",
     tags: "Tags",
     settings: "Settings & Scopes",
@@ -46,7 +46,7 @@ export const translations = {
   },
   de: {
     searchPlaceholder: "Dateien suchen...",
-    files: "Dateien",
+    files: "Alle Dateien",
     scopes: "Bereiche",
     tags: "Tags",
     settings: "Einstellungen & Bereiche",

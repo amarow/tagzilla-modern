@@ -1,6 +1,6 @@
 import { Group, Text, Loader, Alert, Stack, Badge, Table, ActionIcon, Button, Center, Checkbox } from '@mantine/core';
-import { IconFiles, IconAlertCircle, IconExternalLink, IconX, IconSettings } from '@tabler/icons-react';
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { IconFiles, IconAlertCircle, IconX, IconSettings } from '@tabler/icons-react';
+import { useState, useRef, useMemo } from 'react';
 import { useAppStore } from '../store';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { FileRow } from '../components/DndComponents';
@@ -13,7 +13,7 @@ export function HomePage() {
     files, isLoading, error, 
     activeScopeIds, selectedTagId, searchQuery,
     selectedFileIds, toggleFileSelection, setFileSelection, clearFileSelection,
-    tags, removeTagFromFile, openFile, language
+    removeTagFromFile, openFile, language
   } = useAppStore();
 
   const t = translations[language];
@@ -110,10 +110,8 @@ export function HomePage() {
            <Group>
              <IconFiles size={20} />
              <Text fw={500}>
-                {t.files} ({filteredFiles.length} / {files.length}) 
+                {t.files} ({filteredFiles.length} / {files.length})
              </Text>
-             {selectedTagId && <Badge color="blue">{t.tagFilterActive}</Badge>}
-             {activeScopeIds.length > 0 && <Badge color="green" variant="light">{t.scopesActive.replace('{count}', activeScopeIds.length.toString())}</Badge>}
              {selectedFileIds.length > 0 && <Badge color="violet">{t.selected.replace('{count}', selectedFileIds.length.toString())}</Badge>}
            </Group>
            {isLoading && <Loader size="xs" />}
@@ -193,9 +191,9 @@ export function HomePage() {
                                 <Badge 
                                 key={tag.id} 
                                 variant="light" 
-                                color={tag.color || 'blue'}
+                                color={tag.color || 'appleBlue'}
                                 rightSection={
-                                    <ActionIcon size="xs" color="blue" variant="transparent" onClick={(e) => { e.stopPropagation(); removeTagFromFile(file.id, tag.id); }}>
+                                    <ActionIcon size="xs" color="gray" variant="transparent" onClick={(e) => { e.stopPropagation(); removeTagFromFile(file.id, tag.id); }}>
                                     <IconX size={10} />
                                     </ActionIcon>
                                 }

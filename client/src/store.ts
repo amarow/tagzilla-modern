@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 interface FileHandle {
   id: number;
+  scopeId: number;
   path: string;
   name: string;
   extension: string;

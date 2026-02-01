@@ -4,24 +4,31 @@ import '@mantine/core/styles.css';
 import { MantineProvider, createTheme } from '@mantine/core';
 import App from './App.tsx'
 
-// Define the "Godzilla Green" palette (Emerald-ish)
+// Define the "Apple-like" palette
 const theme = createTheme({
   colors: {
-    godzilla: [
-      '#ecfdf5', // 0
-      '#d1fae5', // 1
-      '#a7f3d0', // 2
-      '#6ee7b7', // 3
-      '#34d399', // 4
-      '#10b981', // 5
-      '#059669', // 6
-      '#047857', // 7
-      '#065f46', // 8
-      '#064e3b', // 9
+    appleBlue: [
+      '#eef3ff', // 0
+      '#dce4f5', // 1
+      '#b9c7e2', // 2
+      '#94a8d0', // 3
+      '#748dc1', // 4
+      '#5f7cb8', // 5
+      '#5474b4', // 6
+      '#44639f', // 7
+      '#39588f', // 8
+      '#2d4b82', // 9
     ],
   },
-  primaryColor: 'godzilla',
+  primaryColor: 'appleBlue',
   defaultRadius: 'md',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"',
+  components: {
+    Button: { defaultProps: { fw: 500 } },
+    ActionIcon: { defaultProps: { variant: 'subtle' } },
+    Card: { defaultProps: { withBorder: true, shadow: 'sm', radius: 'md' } },
+    NavLink: { defaultProps: { variant: 'subtle' } },
+  },
 });
 
 class ErrorBoundary extends Component<any, any> {
