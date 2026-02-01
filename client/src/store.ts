@@ -46,14 +46,21 @@ interface AppState {
   error: string | null;
   
   // Filter State
-  selectedScopeId: number | null;
+  activeScopeIds: number[];
   selectedTagId: number | null;
   searchQuery: string;
   
+  // UI State
+  language: 'en' | 'de';
+
+  // Selection State (for Checkboxes)
+  selectedFileIds: number[];
+
   // Auth Actions
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  toggleLanguage: () => void;
 
   // Data Actions
   init: () => Promise<void>;
@@ -64,16 +71,25 @@ interface AppState {
   addScope: (path: string) => Promise<void>;
   deleteScope: (id: number) => Promise<void>;
   refreshScope: (id: number) => Promise<void>;
+  
   addTagToFile: (fileId: number, tagName: string) => Promise<void>;
+  addTagToMultipleFiles: (fileIds: number[], tagName: string) => Promise<void>;
   removeTagFromFile: (fileId: number, tagId: number) => Promise<void>;
+  
   createTag: (name: string, color?: string) => Promise<void>;
+  updateTag: (id: number, updates: { name?: string; color?: string }) => Promise<void>;
   deleteTag: (id: number) => Promise<void>;
   openFile: (fileId: number) => Promise<void>;
   
   // Filter Actions
-  setScopeFilter: (id: number | null) => void;
+  toggleScopeActive: (id: number) => void;
   setTagFilter: (id: number | null) => void;
   setSearchQuery: (query: string) => void;
+
+  // Selection Actions
+  toggleFileSelection: (fileId: number) => void;
+  setFileSelection: (fileIds: number[]) => void;
+  clearFileSelection: () => void;
 }
 
 const API_BASE = 'http://localhost:3001';
@@ -99,7 +115,7 @@ const authFetch = async (url: string, token: string | null, options: RequestInit
 const savePreferences = async (state: AppState) => {
   if (!state.token) return;
   const prefs = {
-    selectedScopeId: state.selectedScopeId,
+    activeScopeIds: state.activeScopeIds,
     selectedTagId: state.selectedTagId,
     searchQuery: state.searchQuery
   };
@@ -126,10 +142,17 @@ export const useAppStore = create<AppState>()(
       isLoading: false,
       error: null,
       
-      selectedScopeId: null,
+      activeScopeIds: [],
       selectedTagId: null,
       searchQuery: '',
-      activeStampTagId: null,
+      
+      language: 'en',
+
+      selectedFileIds: [],
+
+      toggleLanguage: () => {
+          set((state) => ({ language: state.language === 'en' ? 'de' : 'en' }));
+      },
 
       login: async (username, password) => {
           set({ isLoading: true, error: null });
@@ -159,9 +182,6 @@ export const useAppStore = create<AppState>()(
               });
               const data = await res.json();
               if (!res.ok) throw new Error(data.error || 'Registration failed');
-              
-              // Auto login after register? Or just success message?
-              // Let's just stop loading and let user login
               set({ isLoading: false, error: null });
               alert("Registration successful! Please login.");
           } catch (e: any) {
@@ -170,7 +190,7 @@ export const useAppStore = create<AppState>()(
       },
 
       logout: () => {
-          set({ token: null, user: null, isAuthenticated: false, files: [], scopes: [], tags: [] });
+          set({ token: null, user: null, isAuthenticated: false, files: [], scopes: [], tags: [], selectedFileIds: [] });
       },
 
       init: async () => {
@@ -182,13 +202,12 @@ export const useAppStore = create<AppState>()(
               const prefs = await res.json();
               if (prefs) {
                   set({ 
-                      selectedScopeId: prefs.selectedScopeId || null,
+                      activeScopeIds: prefs.activeScopeIds || [],
                       selectedTagId: prefs.selectedTagId || null,
                       searchQuery: prefs.searchQuery || ''
                   });
               }
           } catch (e) {
-              // If init fails (e.g. invalid token), logout
               if ((e as Error).message === "Unauthorized") get().logout();
               return;
           }
@@ -200,13 +219,18 @@ export const useAppStore = create<AppState>()(
           ]);
       },
 
-      setScopeFilter: (id) => {
-          set({ selectedScopeId: id, selectedTagId: null });
+      toggleScopeActive: (id) => {
+          const { activeScopeIds } = get();
+          if (activeScopeIds.includes(id)) {
+              set({ activeScopeIds: activeScopeIds.filter(sid => sid !== id) });
+          } else {
+              set({ activeScopeIds: [...activeScopeIds, id] });
+          }
           savePreferences(get());
       },
       
       setTagFilter: (id) => {
-          set({ selectedTagId: id, selectedScopeId: null });
+          set({ selectedTagId: id });
           savePreferences(get());
       },
 
@@ -215,8 +239,21 @@ export const useAppStore = create<AppState>()(
           savePreferences(get());
       },
 
-      setStampMode: (tagId) => {
-          set({ activeStampTagId: tagId });
+      toggleFileSelection: (fileId) => {
+          const { selectedFileIds } = get();
+          if (selectedFileIds.includes(fileId)) {
+              set({ selectedFileIds: selectedFileIds.filter(id => id !== fileId) });
+          } else {
+              set({ selectedFileIds: [...selectedFileIds, fileId] });
+          }
+      },
+
+      setFileSelection: (fileIds) => {
+          set({ selectedFileIds: fileIds });
+      },
+
+      clearFileSelection: () => {
+          set({ selectedFileIds: [] });
       },
 
       fetchFiles: async () => {
@@ -226,7 +263,6 @@ export const useAppStore = create<AppState>()(
           const data = await response.json();
           set({ files: data, isLoading: false });
         } catch (error) {
-           // handled in authFetch mostly
            set({ isLoading: false });
         }
       },
@@ -275,7 +311,11 @@ export const useAppStore = create<AppState>()(
           if (!response.ok) {
               throw new Error('Failed to delete scope');
           }
-          if (get().selectedScopeId === id) get().setScopeFilter(null);
+          const { activeScopeIds } = get();
+          if (activeScopeIds.includes(id)) {
+             set({ activeScopeIds: activeScopeIds.filter(sid => sid !== id) });
+             savePreferences(get());
+          }
           await get().fetchScopes();
           await get().fetchFiles();
           set({ isLoading: false, error: null });
@@ -315,6 +355,41 @@ export const useAppStore = create<AppState>()(
         }
       },
 
+      updateTag: async (id: number, updates: { name?: string; color?: string }) => {
+        // Optimistic Update
+        const { tags, files } = get();
+        
+        // 1. Update Tag List locally
+        const newTags = tags.map(t => t.id === id ? { ...t, ...updates } : t);
+        set({ tags: newTags });
+
+        // 2. Update Files locally (propagate tag change to all files having this tag)
+        // This makes the color change visible instantly on the file list
+        const newFiles = files.map(f => ({
+            ...f,
+            tags: f.tags.map(t => t.id === id ? { ...t, ...updates } : t)
+        }));
+        set({ files: newFiles });
+
+        try {
+          const response = await authFetch(`${API_BASE}/api/tags/${id}`, get().token, {
+            method: 'PATCH',
+            body: JSON.stringify(updates),
+          });
+          
+          // Re-fetch only on error or to ensure consistency, but don't block
+          if (!response.ok) {
+             await get().fetchTags();
+             await get().fetchFiles(); 
+          }
+        } catch (error) {
+          console.error('Failed to update tag', error);
+          // Rollback/Sync on error
+          await get().fetchTags();
+          await get().fetchFiles(); 
+        }
+      },
+
       deleteTag: async (id: number) => {
         try {
           const response = await authFetch(`${API_BASE}/api/tags/${id}`, get().token, {
@@ -345,6 +420,40 @@ export const useAppStore = create<AppState>()(
         }
       },
 
+      addTagToMultipleFiles: async (fileIds: number[], tagName: string) => {
+          const { token, files } = get();
+          console.log(`[Store] Adding tag "${tagName}" to ${fileIds.length} files...`);
+          try {
+              const res = await authFetch(`${API_BASE}/api/files/bulk-tags`, token, {
+                  method: 'POST',
+                  body: JSON.stringify({ fileIds, tagName })
+              });
+              
+              if (res.ok) {
+                  const { tag, updatedFileIds } = await res.json();
+                  console.log(`[Store] Server updated ${updatedFileIds.length} files. Applying optimistic update...`);
+                  
+                  // Optimistic Update - Use Set for O(1) lookup to avoid O(N*M) complexity
+                  const updatedIdSet = new Set(updatedFileIds);
+                  const newFiles = files.map(f => {
+                      if (updatedIdSet.has(f.id)) {
+                          // Add tag if not exists
+                          if (!f.tags.some(t => t.id === tag.id)) {
+                              return { ...f, tags: [...f.tags, tag] };
+                          }
+                      }
+                      return f;
+                  });
+                  
+                  set({ files: newFiles });
+                  console.log(`[Store] Optimistic update complete.`);
+                  await get().fetchTags(); // Update counts
+              }
+          } catch (e) {
+              console.error("Failed to add tags to multiple files", e);
+          }
+      },
+
       removeTagFromFile: async (fileId: number, tagId: number) => {
         try {
           const response = await authFetch(`${API_BASE}/api/files/${fileId}/tags/${tagId}`, get().token, {
@@ -368,12 +477,13 @@ export const useAppStore = create<AppState>()(
       },
     }),
     {
-      name: 'tagzilla-auth-storage', // Changed name to reset old invalid state
+      name: 'tagzilla-auth-storage', 
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({ 
         token: state.token,
-        user: state.user
-      }), // Persist only auth data. Prefs are loaded from DB on init.
+        user: state.user,
+        language: state.language
+      }),
     }
   )
 );

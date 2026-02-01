@@ -1,23 +1,41 @@
-import { AppShell, Burger, Group, Text, ScrollArea, Button, Table, Loader, Alert, Stack, Badge, ActionIcon, TextInput, NavLink, Portal, Tooltip, useMantineColorScheme, Card, Title, PasswordInput, Center, Container, Modal, Box } from '@mantine/core';
+import { AppShell, Burger, Group, Text, ScrollArea, Button, Loader, Alert, Stack, Badge, ActionIcon, TextInput, NavLink, useMantineColorScheme, Card, Title, PasswordInput, Container, Modal, ColorInput, Popover, ColorSwatch, Center } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconTags, IconFiles, IconPlus, IconAlertCircle, IconX, IconSearch, IconFolder, IconExternalLink, IconTrash, IconSun, IconMoon, IconLogout, IconBrush, IconBan, IconArrowUp, IconCheck, IconHome, IconRefresh } from '@tabler/icons-react';
-import { useEffect, useState, useRef } from 'react';
+import { IconTags, IconPlus, IconAlertCircle, IconX, IconSearch, IconSun, IconMoon, IconLogout, IconBrush, IconBan, IconTrash, IconSettings, IconPencil, IconCheck, IconLanguage } from '@tabler/icons-react';
+import { useEffect, useState } from 'react';
 import { useAppStore } from './store';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, type DragEndEvent } from '@dnd-kit/core';
-import { TagItem, FileRow } from './components/DndComponents';
+import { TagItem } from './components/DndComponents';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { HomePage } from './pages/Home';
+import { SettingsPage } from './pages/Settings';
+import { translations } from './i18n';
+
+const TAG_COLORS = [
+    '#fa5252', // Red
+    '#fd7e14', // Orange
+    '#fab005', // Yellow
+    '#40c057', // Green
+    '#228be6', // Blue
+    '#7950f2', // Violet
+    '#e64980', // Pink
+    '#868e96'  // Gray
+];
 
 export default function App() {
   const [opened, { toggle }] = useDisclosure();
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { 
     isAuthenticated, login, register, logout, error: storeError,
-    files, scopes, tags, isLoading, error, 
-    selectedScopeId, selectedTagId, searchQuery, activeStampTagId,
-    init, addScope, refreshScope, deleteScope, addTagToFile, removeTagFromFile, createTag, deleteTag, openFile,
-    setScopeFilter, setTagFilter, setSearchQuery, setStampMode
+    tags, isLoading, 
+    selectedTagId, searchQuery, selectedFileIds,
+    init, addTagToFile, addTagToMultipleFiles, createTag, deleteTag, updateTag,
+    setTagFilter, setSearchQuery, language, toggleLanguage
   } = useAppStore();
   
+  const t = translations[language];
+
   // Auth State
   const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername] = useState('');
@@ -26,14 +44,11 @@ export default function App() {
   // App State
   const [newTagInput, setNewTagInput] = useState('');
   const [activeDragItem, setActiveDragItem] = useState<any>(null);
-  const [sortBy, setSortBy] = useState<'name' | 'size' | 'updatedAt'>('updatedAt');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  // Directory Browser State
-  const [isBrowserOpen, setIsBrowserOpen] = useState(false);
-  const [browserPath, setBrowserPath] = useState('');
-  const [browserEntries, setBrowserEntries] = useState<any[]>([]);
-  const [isBrowserLoading, setIsBrowserLoading] = useState(false);
+  // Tag Edit State
+  const [editingTag, setEditingTag] = useState<any>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -43,112 +58,48 @@ export default function App() {
     })
   );
 
-  // Virtualization Setup
-  const parentRef = useRef<HTMLDivElement>(null);
-  
-  const filteredFiles = files.filter(file => {
-    const matchesSearch = file.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesScope = selectedScopeId ? file.scopeId === selectedScopeId : true;
-    const matchesTag = selectedTagId ? file.tags.some((t: any) => t.id === selectedTagId) : true;
-    return matchesSearch && matchesScope && matchesTag;
-  });
-
-  const sortedFiles = [...filteredFiles].sort((a, b) => {
-    let valA: any = a[sortBy];
-    let valB: any = b[sortBy];
-
-    if (sortBy === 'updatedAt') {
-        valA = new Date(a.updatedAt).getTime();
-        valB = new Date(b.updatedAt).getTime();
-    }
-
-    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const rowVirtualizer = useVirtualizer({
-    count: sortedFiles.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 60, // approximate row height
-    overscan: 5,
-  });
-
-  const virtualItems = rowVirtualizer.getVirtualItems();
-
   useEffect(() => {
     if (isAuthenticated) {
         init();
     }
   }, [isAuthenticated]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && activeStampTagId) {
-        setStampMode(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeStampTagId, setStampMode]);
-
   const handleAuthSubmit = async () => {
     if (!username || !password) return;
     if (isRegistering) {
         await register(username, password);
-        setIsRegistering(false); // Switch to login after register
+        setIsRegistering(false); 
     } else {
         await login(username, password);
     }
   };
 
-  const fetchDirectory = async (path: string = '') => {
-      setIsBrowserLoading(true);
-      try {
-          const { token } = useAppStore.getState();
-          if (!token) return;
-          
-          const url = new URL('http://localhost:3001/api/fs/list');
-          if (path) url.searchParams.append('path', path);
-          
-          const res = await fetch(url.toString(), {
-              headers: { 'Authorization': `Bearer ${token}` }
-          });
-          
-          if (res.ok) {
-              const data = await res.json();
-              setBrowserPath(data.currentPath);
-              setBrowserEntries(data.entries);
-          }
-      } catch (e) {
-          console.error("Failed to fetch directory", e);
-      } finally {
-          setIsBrowserLoading(false);
+  const handleCreateTag = async () => {
+    if (newTagInput.trim()) {
+        await createTag(newTagInput.trim(), '#40c057'); // Default Godzilla Green
+        setNewTagInput('');
+    }
+  };
+
+  const handleUpdateTag = () => {
+      if (editingTag && editName.trim()) {
+          setEditingTag(null);
+          updateTag(editingTag.id, { name: editName, color: editColor });
       }
   };
 
-  const handleOpenBrowser = () => {
-      setIsBrowserOpen(true);
-      fetchDirectory(); // Fetch home dir initially
-  };
-
-  const handleBrowserSelect = async () => {
-      await addScope(browserPath);
-      setIsBrowserOpen(false);
-  };
-
-  const handleCreateTag = async () => {
-    if (newTagInput.trim()) {
-        await createTag(newTagInput.trim());
-        setNewTagInput('');
-    }
+  const openEditTagModal = (tag: any, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setEditingTag(tag);
+      setEditName(tag.name);
+      setEditColor(tag.color || '#228be6');
   };
 
   const handleDeleteTag = async (e: React.MouseEvent, tag: any) => {
     e.stopPropagation();
     const fileCount = tag._count?.files || 0;
     if (fileCount > 0) {
-        if (!window.confirm(`This tag is used by ${fileCount} files. Are you sure you want to delete it?`)) {
+        if (!window.confirm(t.deleteTagConfirm.replace('{count}', fileCount.toString()))) {
             return;
         }
     }
@@ -172,14 +123,22 @@ export default function App() {
     if (activeType === 'TAG' && overType === 'FILE_TARGET') {
         const tagName = active.data.current?.name;
         if (tagName && overId) {
-             addTagToFile(overId, tagName);
+             if (selectedFileIds.includes(overId)) {
+                 addTagToMultipleFiles(selectedFileIds, tagName);
+             } else {
+                 addTagToFile(overId, tagName);
+             }
         }
     }
 
     if (activeType === 'FILE' && overType === 'TAG_TARGET') {
         const tagName = over.data.current?.name;
         if (tagName && activeId) {
-             addTagToFile(activeId, tagName);
+             if (selectedFileIds.includes(activeId)) {
+                 addTagToMultipleFiles(selectedFileIds, tagName);
+             } else {
+                 addTagToFile(activeId, tagName);
+             }
         }
     }
   };
@@ -188,29 +147,29 @@ export default function App() {
       return (
           <Container size="xs" mt="xl">
               <Card withBorder shadow="sm" p="lg" radius="md">
-                  <Title order={2} ta="center" mb="lg">Tagzilla</Title>
+                  <Title order={2} ta="center" mb="lg">{t.appName}</Title>
                   <Stack>
                       {storeError && <Alert color="red" title="Error">{storeError}</Alert>}
                       <TextInput 
-                        label="Username" 
-                        placeholder="Your username" 
+                        label={t.username} 
+                        placeholder={t.username} 
                         required 
                         value={username} 
                         onChange={(e) => setUsername(e.currentTarget.value)}
                       />
                       <PasswordInput 
-                        label="Password" 
-                        placeholder="Your password" 
+                        label={t.password} 
+                        placeholder={t.password} 
                         required 
                         value={password}
                         onChange={(e) => setPassword(e.currentTarget.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleAuthSubmit()}
                       />
                       <Button fullWidth mt="md" onClick={handleAuthSubmit} loading={isLoading}>
-                          {isRegistering ? 'Register' : 'Login'}
+                          {isRegistering ? t.register : t.login}
                       </Button>
                       <Text c="dimmed" size="sm" ta="center" style={{ cursor: 'pointer' }} onClick={() => setIsRegistering(!isRegistering)}>
-                          {isRegistering ? 'Already have an account? Login' : "Don't have an account? Register"}
+                          {isRegistering ? t.alreadyHaveAccount : t.dontHaveAccount}
                       </Text>
                   </Stack>
               </Card>
@@ -233,16 +192,19 @@ export default function App() {
         <Group h="100%" px="md" justify="space-between">
           <Group>
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <Text fw={700} size="lg">Tagzilla</Text>
+            <Text fw={700} size="lg" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>{t.appName}</Text>
           </Group>
           
           <Group>
             <TextInput 
-                placeholder="Search files..." 
+                placeholder={t.searchPlaceholder}
                 leftSection={<IconSearch size={16} />} 
                 style={{ width: 400 }}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                onChange={(e) => {
+                    setSearchQuery(e.currentTarget.value);
+                    if (location.pathname !== '/') navigate('/');
+                }}
                 rightSection={
                 searchQuery ? (
                     <ActionIcon variant="transparent" c="dimmed" onClick={() => setSearchQuery('')}>
@@ -254,6 +216,25 @@ export default function App() {
           </Group>
 
           <Group>
+            <Button 
+                variant="default" 
+                size="xs" 
+                onClick={toggleLanguage} 
+                fw={700}
+                style={{ textTransform: 'uppercase' }}
+            >
+                {language}
+            </Button>
+            <ActionIcon 
+                onClick={() => navigate('/settings')} 
+                variant={location.pathname === '/settings' ? "filled" : "default"} 
+                size="lg" 
+                aria-label={t.settings}
+                title={t.settings}
+                color={location.pathname === '/settings' ? 'blue' : undefined}
+            >
+                <IconSettings size={18} />
+            </ActionIcon>
             <ActionIcon onClick={() => toggleColorScheme()} variant="default" size="lg" aria-label="Toggle color scheme">
                 {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
             </ActionIcon>
@@ -266,111 +247,73 @@ export default function App() {
 
       <AppShell.Navbar p="md">
         <Stack gap="xs">
+          
           <Group justify="space-between" mb="xs">
             <Group gap="xs">
-              <IconFolder size={20} />
-              <Text fw={500}>Scopes</Text>
-            </Group>
-            <ActionIcon variant="light" size="sm" onClick={handleOpenBrowser} title="Add Scope">
-              <IconPlus size={14} />
-            </ActionIcon>
-          </Group>
-          
-          <ScrollArea h={150}>
-             <NavLink 
-               label="All Files"
-               active={!selectedScopeId && !selectedTagId}
-               onClick={() => { setScopeFilter(null); setTagFilter(null); }}
-               variant="light"
-               mb={4}
-             />
-             {scopes.map(scope => (
-               <NavLink 
-                 key={scope.id} 
-                 label={scope.name}
-                 active={selectedScopeId === scope.id}
-                 onClick={() => setScopeFilter(scope.id)}
-                 rightSection={
-                    <Group gap={4}>
-                        <ActionIcon 
-                            variant="transparent" 
-                            size="sm" 
-                            onClick={(e) => { e.stopPropagation(); refreshScope(scope.id); }}
-                            title="Update Files"
-                        >
-                            <IconRefresh size={14} />
-                        </ActionIcon>
-                        <ActionIcon 
-                            variant="transparent" 
-                            size="sm" 
-                            color="red"
-                            onClick={(e) => { 
-                                e.stopPropagation(); 
-                                if(confirm('Delete scope?')) deleteScope(scope.id); 
-                            }}
-                            title="Remove Scope"
-                        >
-                            <IconTrash size={14} />
-                        </ActionIcon>
-                    </Group>
-                 }
-                 variant="light"
-                 mb={2}
-               />
-             ))}
-             {scopes.length === 0 && <Text size="xs" c="dimmed" px="sm">No scopes added yet.</Text>}
-          </ScrollArea>
-
-          <Group justify="space-between" mt="md" mb="xs">
-            <Group gap="xs">
               <IconTags size={20} />
-              <Text fw={500}>Tags</Text>
+              <Text fw={500}>{t.tags}</Text>
             </Group>
           </Group>
 
-          <TextInput 
-            placeholder="New Tag..." 
-            size="xs"
-            mb="xs"
-            leftSection={<IconPlus size={14} />} 
-            value={newTagInput}
-            onChange={(e) => setNewTagInput(e.currentTarget.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleCreateTag()}
-          />
+          <Stack gap={5}>
+            <TextInput 
+                placeholder={t.newTagName}
+                size="xs"
+                value={newTagInput}
+                onChange={(e) => setNewTagInput(e.currentTarget.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleCreateTag()}
+                rightSection={
+                    <ActionIcon variant="transparent" color="blue" onClick={handleCreateTag} title={t.createTag}>
+                        <IconPlus size={16} />
+                    </ActionIcon>
+                }
+            />
+          </Stack>
 
-          <ScrollArea h={300}>
+          <ScrollArea h="calc(100vh - 180px)" mt="sm">
             <Stack gap={4}>
+              <NavLink 
+                 label={t.files}
+                 leftSection={<IconTags size={16} />}
+                 active={!selectedTagId && location.pathname === '/'}
+                 onClick={() => { setTagFilter(null); navigate('/'); }}
+                 variant="light"
+                 mb={4}
+               />
               {tags.map(tag => (
                 <TagItem 
                     key={tag.id} 
                     tag={tag} 
                     isSelected={selectedTagId === tag.id}
-                    onClick={() => setTagFilter(tag.id)}
+                    onClick={() => { setTagFilter(tag.id); navigate('/'); }}
                 >
                     <Group gap={0} wrap="nowrap">
                         <Button 
-                        variant={selectedTagId === tag.id ? "filled" : (activeStampTagId === tag.id ? "light" : "light")}
-                        color={activeStampTagId === tag.id ? "orange" : (selectedTagId === tag.id ? "blue" : "gray")}
+                        variant={selectedTagId === tag.id ? "filled" : "light"}
+                        color={tag.color || (selectedTagId === tag.id ? "blue" : "gray")}
                         fullWidth 
                         justify="space-between" 
                         size="xs"
-                        rightSection={<Badge size="xs" variant="transparent" color="dark">{tag._count?.files}</Badge>}
-                        style={{ pointerEvents: 'none', borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRight: '1px solid rgba(0,0,0,0.1)' }} 
+                        rightSection={<Badge size="xs" variant="transparent" color="dark" style={{ mixBlendMode: 'multiply' }}>{tag._count?.files}</Badge>}
+                        style={{ 
+                            pointerEvents: 'none', 
+                            borderTopRightRadius: 0, 
+                            borderBottomRightRadius: 0, 
+                            borderRight: '1px solid rgba(0,0,0,0.1)',
+                            color: tag.color ? 'white' : undefined
+                        }} 
                         >
                         {tag.name}
                         </Button>
                         <ActionIcon 
                             size="30px" 
-                            variant={activeStampTagId === tag.id ? "filled" : "light"}
-                            color={activeStampTagId === tag.id ? "orange" : "gray"}
+                            variant="light"
+                            color="gray"
                             style={{ borderRadius: 0, borderRight: '1px solid rgba(0,0,0,0.1)' }}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setStampMode(activeStampTagId === tag.id ? null : tag.id);
-                            }}
-                            title={activeStampTagId === tag.id ? "Stop Stamping (Esc)" : "Stamp Mode"}
+                            onClick={(e) => openEditTagModal(tag, e)}
+                            title={t.editTag}
                         >
-                            {activeStampTagId === tag.id ? <IconBan size={14} /> : <IconBrush size={14} />}
+                            <IconPencil size={14} />
                         </ActionIcon>
                         <ActionIcon 
                             size="30px" 
@@ -378,7 +321,7 @@ export default function App() {
                             color={selectedTagId === tag.id ? "blue" : "gray"}
                             style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
                             onClick={(e) => handleDeleteTag(e, tag)}
-                            title="Delete Tag"
+                            title={t.removeScope}
                         >
                             <IconTrash size={14} />
                         </ActionIcon>
@@ -392,198 +335,70 @@ export default function App() {
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Group mb="md" justify="space-between">
-           <Group>
-             <IconFiles size={20} />
-             <Text fw={500}>
-                Files ({filteredFiles.length} / {files.length}) 
-             </Text>
-             {selectedTagId && <Badge color="blue">Tag Filter Active</Badge>}
-             {selectedScopeId && <Badge color="green">Scope Filter Active</Badge>}
-           </Group>
-           {isLoading && <Loader size="xs" />}
-        </Group>
-
-        {error && (
-          <Alert icon={<IconAlertCircle size={16} />} title="Error" color="red" mb="md">
-            {error}
-          </Alert>
-        )}
-
-        <div 
-          ref={parentRef} 
-          style={{ 
-            height: 'calc(100vh - 160px)', 
-            overflow: 'auto',
-            border: '1px solid var(--mantine-color-default-border)',
-            borderRadius: '4px'
-          }}
-        >
-          <Table verticalSpacing="xs" striped highlightOnHover style={{ tableLayout: 'fixed', minWidth: '100%' }}>
-            <Table.Thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'var(--mantine-color-body)' }}>
-              <Table.Tr>
-                <Table.Th style={{ cursor: 'pointer', width: '50%' }} onClick={() => handleSort('name')}>
-                  Name {sortBy === 'name' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
-                </Table.Th>
-                <Table.Th style={{ width: '25%' }}>Tags</Table.Th>
-                <Table.Th style={{ cursor: 'pointer', width: '10%' }} onClick={() => handleSort('size')}>
-                  Size {sortBy === 'size' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
-                </Table.Th>
-                <Table.Th style={{ cursor: 'pointer', width: '15%' }} onClick={() => handleSort('updatedAt')}>
-                  Updated {sortBy === 'updatedAt' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
-                </Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-               {virtualItems.length > 0 && (
-                  <tr>
-                      <td style={{ height: virtualItems[0]?.start || 0, padding: 0, border: 0 }} colSpan={4} />
-                  </tr>
-               )}
-               {virtualItems.map((virtualRow) => {
-                 const file = sortedFiles[virtualRow.index];
-                 if (!file) return null;
-                 return (
-                    <FileRow key={file.id} file={file} data-index={virtualRow.index}>
-                        <Table.Td 
-                            style={{ cursor: activeStampTagId ? 'copy' : 'default' }}
-                            onClick={(e: React.MouseEvent) => {
-                                if (activeStampTagId) {
-                                    e.stopPropagation();
-                                    const tag = tags.find(t => t.id === activeStampTagId);
-                                    if (tag) addTagToFile(file.id, tag.name);
-                                }
-                            }}
-                        >
-                            <Group gap="xs" wrap="nowrap">
-                                <ActionIcon variant="subtle" color="gray" onClick={(e) => { e.stopPropagation(); openFile(file.id); }} title="Open in default app">
-                                    <IconExternalLink size={16} />
-                                </ActionIcon>
-                                <div style={{ flex: 1, overflow: 'hidden' }}>
-                                    <Text size="sm" fw={500} style={{ wordBreak: 'break-all', cursor: activeStampTagId ? 'copy' : 'pointer' }} onClick={(e) => {
-                                        if (activeStampTagId) {
-                                            e.stopPropagation();
-                                            const tag = tags.find(t => t.id === activeStampTagId);
-                                            if (tag) addTagToFile(file.id, tag.name);
-                                        } else {
-                                            openFile(file.id);
-                                        }
-                                    }}>
-                                        {file.name}
-                                    </Text>
-                                    <Text size="xs" c="dimmed" style={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {file.path}
-                                    </Text>
-                                </div>
-                            </Group>
-                        </Table.Td>
-                        <Table.Td
-                            style={{ cursor: activeStampTagId ? 'copy' : 'default' }}
-                            onClick={(e: React.MouseEvent) => {
-                                if (activeStampTagId) {
-                                    e.stopPropagation();
-                                    const tag = tags.find(t => t.id === activeStampTagId);
-                                    if (tag) addTagToFile(file.id, tag.name);
-                                }
-                            }}
-                        >
-                            <Group gap={5}>
-                            {file.tags.map((tag: any) => (
-                                <Badge 
-                                key={tag.id} 
-                                variant="light" 
-                                rightSection={
-                                    <ActionIcon size="xs" color="blue" variant="transparent" onClick={(e) => { e.stopPropagation(); removeTagFromFile(file.id, tag.id); }}>
-                                    <IconX size={10} />
-                                    </ActionIcon>
-                                }
-                                >
-                                {tag.name}
-                                </Badge>
-                            ))}
-                            </Group>
-                        </Table.Td>
-                        <Table.Td>{(file.size / 1024).toFixed(1)} KB</Table.Td>
-                        <Table.Td>{new Date(file.updatedAt).toLocaleDateString()}</Table.Td>
-                    </FileRow>
-                 );
-               })}
-               {virtualItems.length > 0 && (
-                  <tr>
-                      <td style={{ height: rowVirtualizer.getTotalSize() - (virtualItems[virtualItems.length - 1]?.end || 0), padding: 0, border: 0 }} colSpan={4} />
-                  </tr>
-               )}
-            </Table.Tbody>
-          </Table>
-          
-          {!isLoading && filteredFiles.length === 0 && (
-            <Stack align="center" py="xl">
-              <Text c="dimmed">No files match your filters.</Text>
-            </Stack>
-          )}
-        </div>
+        <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
       </AppShell.Main>
 
       <DragOverlay>
         {activeDragItem ? (
-           <Button variant="filled" color="blue" size="xs" style={{ cursor: 'grabbing', opacity: 0.9 }}>
+           <Button 
+             variant="filled" 
+             color="blue" 
+             size="xs" 
+             style={{ cursor: 'grabbing', opacity: 0.9 }}
+             rightSection={
+                 (activeDragItem.type === 'FILE' && selectedFileIds.includes(activeDragItem.id) && selectedFileIds.length > 1) 
+                 ? <Badge size="xs" circle color="white" c="blue">{selectedFileIds.length}</Badge> 
+                 : null
+             }
+           >
               {activeDragItem.name}
            </Button>
         ) : null}
       </DragOverlay>
     </AppShell>
 
-    <Modal 
-        opened={isBrowserOpen} 
-        onClose={() => setIsBrowserOpen(false)} 
-        title="Select Directory to Watch"
-        size="lg"
-    >
-        <Stack>
-            <Group>
-                <TextInput 
-                    value={browserPath} 
-                    onChange={(e) => setBrowserPath(e.currentTarget.value)}
-                    style={{ flex: 1 }}
-                    rightSection={isBrowserLoading ? <Loader size="xs" /> : null}
-                    onKeyDown={(e) => e.key === 'Enter' && fetchDirectory(browserPath)}
-                />
-                <Button onClick={() => fetchDirectory(browserPath)} variant="default">Go</Button>
-            </Group>
+    <Modal opened={!!editingTag} onClose={() => setEditingTag(null)} title={t.editTag} size="xs" centered>
+        <Stack gap="lg">
+            <TextInput 
+                value={editName} 
+                onChange={(e) => setEditName(e.currentTarget.value)} 
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleUpdateTag();
+                }}
+                placeholder={t.tagName}
+                size="md"
+                data-autofocus
+                styles={{
+                    input: {
+                        backgroundColor: editColor,
+                        color: ['#fab005', '#fcc419'].includes(editColor) ? 'black' : 'white',
+                        fontWeight: 600,
+                        textAlign: 'center',
+                        border: '1px solid rgba(0,0,0,0.1)',
+                    }
+                }}
+            />
             
-            <Card withBorder p={0}>
-                <ScrollArea h={300}>
-                    {browserEntries.map((entry) => (
-                        <Group 
-                            key={entry.path} 
-                            p="xs" 
-                            style={{ 
-                                cursor: 'pointer', 
-                                borderBottom: '1px solid var(--mantine-color-default-border)' 
-                            }}
-                            onClick={() => fetchDirectory(entry.path)}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--mantine-color-default-hover)'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                        >
-                            {entry.name === '..' ? <IconArrowUp size={16} /> : <IconFolder size={16} />}
-                            <Text size="sm">{entry.name}</Text>
-                        </Group>
-                    ))}
-                    {browserEntries.length === 0 && !isBrowserLoading && (
-                        <Text c="dimmed" p="md" ta="center">Directory is empty</Text>
-                    )}
-                </ScrollArea>
-            </Card>
-
-            <Group justify="flex-end">
-                <Button variant="default" onClick={() => setIsBrowserOpen(false)}>Cancel</Button>
-                <Button onClick={handleBrowserSelect} leftSection={<IconCheck size={16} />}>
-                    Select This Directory
-                </Button>
+            <Group gap={8} justify="center" wrap="wrap">
+                {TAG_COLORS.map((color) => (
+                    <ColorSwatch 
+                        key={color} 
+                        color={color} 
+                        onClick={() => setEditColor(color)}
+                        style={{ color: '#fff', cursor: 'pointer' }}
+                        size={24}
+                    >
+                        {editColor === color && <IconCheck size={14} />}
+                    </ColorSwatch>
+                ))}
             </Group>
+
+            <Button fullWidth onClick={handleUpdateTag} variant="default">{t.save}</Button>
         </Stack>
     </Modal>
-
     </DndContext>
   );
 }

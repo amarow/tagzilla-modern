@@ -129,6 +129,48 @@ export const fileRepository = {
     return runTransaction();
   },
 
+  async addTagToFiles(userId: number, fileIds: number[], tagName: string) {
+     const runTransaction = db.transaction(() => {
+        // 1. Find or Create Tag (once)
+        const upsertTag = db.prepare(`
+            INSERT INTO Tag (userId, name) VALUES (?, ?)
+            ON CONFLICT(userId, name) DO NOTHING
+        `);
+        upsertTag.run(userId, tagName);
+        
+        const getTag = db.prepare('SELECT id FROM Tag WHERE userId = ? AND name = ?');
+        const tag = getTag.get(userId, tagName) as { id: number };
+
+        // 2. Process Files
+        const checkFile = db.prepare(`
+            SELECT f.id FROM FileHandle f 
+            JOIN Scope s ON f.scopeId = s.id 
+            WHERE f.id = ? AND s.userId = ?
+        `);
+        const link = db.prepare(`
+            INSERT OR IGNORE INTO _FileHandleToTag (A, B) VALUES (?, ?)
+        `);
+
+        const updatedFiles: any[] = [];
+        
+        for (const fileId of fileIds) {
+             const file = checkFile.get(fileId, userId);
+             if (file) {
+                 link.run(fileId, tag.id);
+                 // We don't return full objects to save bandwidth on massive updates,
+                 // but returning IDs allows client to update locally.
+                 updatedFiles.push(fileId);
+             }
+        }
+        
+        return { 
+            tag, 
+            updatedFileIds: updatedFiles 
+        };
+     });
+     return runTransaction();
+  },
+
   async removeTagFromFile(userId: number, fileId: number, tagId: number) {
      const runTransaction = db.transaction(() => {
         // 1. Verify access
@@ -197,6 +239,33 @@ export const tagRepository = {
     const stmt = db.prepare('INSERT INTO Tag (userId, name, color) VALUES (?, ?, ?)');
     const info = stmt.run(userId, name, color);
     return { id: Number(info.lastInsertRowid), userId, name, color };
+  },
+
+  async update(userId: number, id: number, updates: { name?: string, color?: string }) {
+    const { name, color } = updates;
+    const fields = [];
+    const values = [];
+
+    if (name !== undefined) {
+        fields.push('name = ?');
+        values.push(name);
+    }
+    if (color !== undefined) {
+        fields.push('color = ?');
+        values.push(color);
+    }
+
+    if (fields.length === 0) return null;
+
+    values.push(id);
+    values.push(userId);
+
+    const stmt = db.prepare(`UPDATE Tag SET ${fields.join(', ')} WHERE id = ? AND userId = ?`);
+    stmt.run(...values);
+    
+    // Return updated tag
+    const getStmt = db.prepare('SELECT * FROM Tag WHERE id = ?');
+    return getStmt.get(id);
   },
 
   async delete(userId: number, id: number) {

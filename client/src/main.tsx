@@ -50,11 +50,15 @@ class ErrorBoundary extends Component<any, any> {
   }
 }
 
+import { BrowserRouter } from 'react-router-dom';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <MantineProvider theme={theme} defaultColorScheme="auto">
       <ErrorBoundary>
-        <App />
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
       </ErrorBoundary>
     </MantineProvider>
   </StrictMode>,
