@@ -6,6 +6,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { FileRow } from '../components/DndComponents';
 import { useNavigate } from 'react-router-dom';
 import { translations } from '../i18n';
+import { FilePreviewModal } from '../components/FilePreviewModal';
 
 export function HomePage() {
   console.log("[HomePage] Render cycle start");
@@ -14,7 +15,7 @@ export function HomePage() {
     activeScopeIds, selectedTagId, searchQuery,
     selectedFileIds, toggleFileSelection, setFileSelection, clearFileSelection,
     removeTagFromFile, openFile, language,
-    searchMode, searchResults, isSearching
+    searchMode, searchResults, isSearching, setPreviewFileId
   } = useAppStore();
 
   const t = translations[language];
@@ -122,6 +123,7 @@ export function HomePage() {
 
   return (
     <>
+        <FilePreviewModal />
         <Group mb="md" justify="space-between">
            <Group>
              <IconFiles size={20} />
@@ -202,7 +204,7 @@ export function HomePage() {
                             <Table.Td>
                                 <Group gap="xs" wrap="nowrap">
                                     <div style={{ flex: 1, overflow: 'hidden' }}>
-                                        <Text size="sm" fw={500} style={{ wordBreak: 'break-all', cursor: 'pointer' }} onClick={() => openFile(file.id)}>
+                                        <Text size="sm" fw={500} style={{ wordBreak: 'break-all', cursor: 'pointer' }} onClick={() => setPreviewFileId(file.id)}>
                                             {file.name}
                                         </Text>
                                         {(file as any).snippet ? (

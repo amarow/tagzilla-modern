@@ -197,6 +197,40 @@ app.get('/api/files', authenticateToken, async (req, res) => {
     }
 });
 
+app.get('/api/files/:id/content', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const { id } = req.params;
+        
+        const sql = `
+            SELECT f.path, f.mimeType 
+            FROM FileHandle f 
+            JOIN Scope s ON f.scopeId = s.id 
+            WHERE f.id = ? AND s.userId = ?
+        `;
+        const file = db.prepare(sql).get(id, userId) as { path: string, mimeType: string };
+        
+        if (!file) {
+             res.status(404).json({ error: 'File not found or access denied' });
+             return;
+        }
+
+        // Optional: Set Content-Type header explicitly if needed, though sendFile usually handles it.
+        // res.setHeader('Content-Type', file.mimeType);
+        
+        res.sendFile(file.path, { dotfiles: 'allow' }, (err) => {
+             if (err) {
+                 if (!res.headersSent) {
+                    res.status(500).json({ error: 'Failed to send file' });
+                 }
+             }
+        });
+
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/api/files/:id/open', authenticateToken, async (req, res) => {
     try {
         // TODO: Ensure file belongs to user (scope check) - implicitly safe via local exec but good practice

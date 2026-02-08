@@ -53,6 +53,7 @@ interface AppState {
   searchMode: 'filename' | 'content';
   searchResults: FileHandle[];
   isSearching: boolean;
+  previewFileId: number | null;
   
   // UI State
   language: 'en' | 'de';
@@ -84,6 +85,7 @@ interface AppState {
   updateTag: (id: number, updates: { name?: string; color?: string }) => Promise<void>;
   deleteTag: (id: number) => Promise<void>;
   openFile: (fileId: number) => Promise<void>;
+  setPreviewFileId: (id: number | null) => void;
   
   // Filter Actions
   toggleScopeActive: (id: number) => void;
@@ -154,10 +156,13 @@ export const useAppStore = create<AppState>()(
       searchMode: 'filename',
       searchResults: [],
       isSearching: false,
+      previewFileId: null,
       
       language: 'en',
 
       selectedFileIds: [],
+
+      setPreviewFileId: (id) => set({ previewFileId: id }),
 
       toggleLanguage: () => {
           set((state) => ({ language: state.language === 'en' ? 'de' : 'en' }));
