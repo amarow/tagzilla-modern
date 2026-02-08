@@ -13,7 +13,8 @@ export function HomePage() {
     files, isLoading, error, 
     activeScopeIds, selectedTagId, searchQuery,
     selectedFileIds, toggleFileSelection, setFileSelection, clearFileSelection,
-    removeTagFromFile, openFile, language
+    removeTagFromFile, openFile, language,
+    searchMode, searchResults, isSearching
   } = useAppStore();
 
   const t = translations[language];
@@ -32,15 +33,30 @@ export function HomePage() {
   };
 
   const filteredFiles = useMemo(() => {
-    console.log(`[HomePage] Filtering ${files.length} files...`);
+    let sourceFiles = files;
+    // If content search and we have a query, use the search results from API
+    // Note: searchResults might be empty if search hasn't run yet, but isSearching would be true/false.
+    if (searchMode === 'content' && searchQuery.trim()) {
+        sourceFiles = searchResults;
+    }
+
+    console.log(`[HomePage] Filtering ${sourceFiles.length} files (Source: ${searchMode})...`);
     const lowerQuery = searchQuery.toLowerCase();
-    return files.filter(file => {
-      const matchesSearch = file.name.toLowerCase().includes(lowerQuery);
+    
+    return sourceFiles.filter(file => {
+      // Logic:
+      // 1. Search Match:
+      //    - If content mode: already filtered by API (sourceFiles = searchResults).
+      //    - If filename mode: check name includes query.
+      const matchesSearch = (searchMode === 'content' && searchQuery.trim()) 
+          ? true 
+          : file.name.toLowerCase().includes(lowerQuery);
+
       const matchesScope = activeScopeIds.length > 0 ? activeScopeIds.includes(file.scopeId) : false;
       const matchesTag = selectedTagId ? file.tags.some((t: any) => t.id === selectedTagId) : true;
       return matchesSearch && matchesScope && matchesTag;
     });
-  }, [files, searchQuery, activeScopeIds, selectedTagId]);
+  }, [files, searchResults, searchQuery, searchMode, activeScopeIds, selectedTagId]);
 
   const sortedFiles = useMemo(() => {
     console.log(`[HomePage] Sorting ${filteredFiles.length} files...`);
@@ -114,7 +130,7 @@ export function HomePage() {
              </Text>
              {selectedFileIds.length > 0 && <Badge color="violet">{t.selected.replace('{count}', selectedFileIds.length.toString())}</Badge>}
            </Group>
-           {isLoading && <Loader size="xs" />}
+           {(isLoading || isSearching) && <Loader size="xs" />}
         </Group>
 
         {error && (
@@ -155,7 +171,7 @@ export function HomePage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-               {isLoading && filteredFiles.length === 0 ? (
+               {(isLoading || isSearching) && filteredFiles.length === 0 ? (
                    <tr>
                        <td colSpan={5}>
                            <Center h={200}>
@@ -189,9 +205,15 @@ export function HomePage() {
                                         <Text size="sm" fw={500} style={{ wordBreak: 'break-all', cursor: 'pointer' }} onClick={() => openFile(file.id)}>
                                             {file.name}
                                         </Text>
-                                        <Text size="xs" c="dimmed" style={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {file.path}
-                                        </Text>
+                                        {(file as any).snippet ? (
+                                            <Text size="xs" c="dimmed" style={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                <span dangerouslySetInnerHTML={{ __html: (file as any).snippet }} />
+                                            </Text>
+                                        ) : (
+                                            <Text size="xs" c="dimmed" style={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {file.path}
+                                            </Text>
+                                        )}
                                     </div>
                                 </Group>
                             </Table.Td>

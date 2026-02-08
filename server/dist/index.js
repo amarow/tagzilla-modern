@@ -50,7 +50,7 @@ const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3001;
 console.log("!!! SERVER STARTUP - ASYNC CRAWLER VERSION " + Date.now() + " !!!");
 app.use((0, cors_1.default)());
-app.use(express_1.default.json());
+app.use(express_1.default.json({ limit: '50mb' }));
 // --- Public Routes ---
 app.get('/', (req, res) => {
     res.send('Tagzilla Backend is running!');
@@ -383,6 +383,52 @@ app.delete('/api/tags/:id', auth_1.authenticateToken, async (req, res) => {
         const { id } = req.params;
         await repository_1.tagRepository.delete(userId, Number(id));
         res.json({ success: true });
+    }
+    catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+// Search & Settings
+app.get('/api/search', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const q = req.query.q;
+        const mode = req.query.mode;
+        if (!q) {
+            res.status(400).json({ error: 'Query parameter q is required' });
+            return;
+        }
+        const searchMode = (mode === 'content') ? 'content' : 'filename';
+        const results = await repository_1.searchRepository.search(userId, q, searchMode);
+        res.json(results);
+    }
+    catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+app.get('/api/settings/search', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const appState = await repository_1.appStateRepository.get(userId);
+        const settings = appState?.search_settings || { allowedExtensions: null };
+        res.json(settings);
+    }
+    catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+app.put('/api/settings/search', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { allowedExtensions } = req.body;
+        if (!Array.isArray(allowedExtensions)) {
+            res.status(400).json({ error: 'allowedExtensions must be an array' });
+            return;
+        }
+        let appState = await repository_1.appStateRepository.get(userId) || {};
+        appState.search_settings = { allowedExtensions };
+        await repository_1.appStateRepository.set(userId, appState);
+        res.json({ success: true, settings: appState.search_settings });
     }
     catch (e) {
         res.status(500).json({ error: e.message });

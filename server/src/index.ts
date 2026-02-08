@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { db } from './db/client';
 import { crawlerService } from './services/crawler';
-import { scopeRepository, fileRepository, tagRepository, appStateRepository } from './db/repository';
+import { scopeRepository, fileRepository, tagRepository, appStateRepository, searchRepository } from './db/repository';
 import { exec, spawn } from 'child_process';
 import { authService, authenticateToken, AuthRequest } from './auth';
 import * as fs from 'fs/promises';
@@ -211,23 +211,28 @@ app.post('/api/files/:id/open', authenticateToken, async (req, res) => {
         let command = '';
         const args: string[] = [];
 
-        // On Linux/Ubuntu, 'gio open' is often more reliable than 'xdg-open' for desktop apps
-        switch (process.platform) {
-            case 'darwin': 
-                command = 'open'; 
-                args.push(file.path);
-                break;
-            case 'win32': 
-                command = 'cmd'; 
-                args.push('/c', 'start', '""', file.path);
-                break;
-            default: 
-                // Try gio open first (GNOME), fallback to xdg-open if needed?
-                // Actually xdg-open delegates to gio open, but let's be explicit if we can.
-                // For now, let's stick to xdg-open but ensure env is passed correctly.
-                command = 'xdg-open'; 
-                args.push(file.path);
-                break;
+        if (process.platform === 'linux' && file.extension === '.pdf') {
+            command = 'evince';
+            args.push(file.path);
+        } else {
+            // On Linux/Ubuntu, 'gio open' is often more reliable than 'xdg-open' for desktop apps
+            switch (process.platform) {
+                case 'darwin': 
+                    command = 'open'; 
+                    args.push(file.path);
+                    break;
+                case 'win32': 
+                    command = 'cmd'; 
+                    args.push('/c', 'start', '""', file.path);
+                    break;
+                default: 
+                    // Try gio open first (GNOME), fallback to xdg-open if needed?
+                    // Actually xdg-open delegates to gio open, but let's be explicit if we can.
+                    // For now, let's stick to xdg-open but ensure env is passed correctly.
+                    command = 'xdg-open'; 
+                    args.push(file.path);
+                    break;
+            }
         }
 
         console.log(`Attempting to open file: "${file.path}"`);
@@ -374,6 +379,57 @@ app.delete('/api/tags/:id', authenticateToken, async (req, res) => {
         const { id } = req.params;
         await tagRepository.delete(userId, Number(id));
         res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Search & Settings
+app.get('/api/search', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const q = req.query.q as string;
+        const mode = req.query.mode as string;
+        
+        if (!q) {
+            res.status(400).json({ error: 'Query parameter q is required' });
+            return;
+        }
+        
+        const searchMode = (mode === 'content') ? 'content' : 'filename';
+        const results = await searchRepository.search(userId, q, searchMode);
+        res.json(results);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/settings/search', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const appState = await appStateRepository.get(userId);
+        const settings = appState?.search_settings || { allowedExtensions: null }; 
+        res.json(settings);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.put('/api/settings/search', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const { allowedExtensions } = req.body;
+        
+        if (!Array.isArray(allowedExtensions)) {
+             res.status(400).json({ error: 'allowedExtensions must be an array' });
+             return;
+        }
+
+        let appState = await appStateRepository.get(userId) || {};
+        appState.search_settings = { allowedExtensions };
+        
+        await appStateRepository.set(userId, appState);
+        res.json({ success: true, settings: appState.search_settings });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

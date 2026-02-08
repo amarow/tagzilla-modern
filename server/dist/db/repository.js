@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.appStateRepository = exports.tagRepository = exports.fileRepository = exports.scopeRepository = void 0;
+exports.searchRepository = exports.appStateRepository = exports.tagRepository = exports.fileRepository = exports.scopeRepository = void 0;
 const client_1 = require("./client");
 const path_1 = __importDefault(require("path"));
 // --- Statements ---
@@ -50,22 +50,29 @@ exports.fileRepository = {
             mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
         // Using UPSERT syntax (INSERT OR REPLACE / ON CONFLICT)
         // SQLite supports ON CONFLICT(scopeId, path) DO UPDATE
+        // Use mtime (modification time) from file stats for updatedAt
         const sql = `
       INSERT INTO FileHandle (scopeId, path, name, extension, size, mimeType, updatedAt)
-      VALUES (@scopeId, @path, @name, @extension, @size, @mimeType, CURRENT_TIMESTAMP)
+      VALUES (@scopeId, @path, @name, @extension, @size, @mimeType, @mtime)
       ON CONFLICT(scopeId, path) DO UPDATE SET
         size = excluded.size,
-        updatedAt = CURRENT_TIMESTAMP
+        updatedAt = excluded.updatedAt
     `;
         const stmt = client_1.db.prepare(sql);
-        stmt.run({
+        const info = stmt.run({
             scopeId,
             path: filePath,
             name: filename,
             extension,
             size: stats.size,
-            mimeType
+            mimeType,
+            mtime: stats.mtime.toISOString() // Store as ISO string
         });
+        if (info.lastInsertRowid && Number(info.lastInsertRowid) > 0) {
+            return Number(info.lastInsertRowid);
+        }
+        const row = client_1.db.prepare('SELECT id FROM FileHandle WHERE scopeId = ? AND path = ?').get(scopeId, filePath);
+        return row.id;
     },
     async removeFile(scopeId, filePath) {
         const stmt = client_1.db.prepare('DELETE FROM FileHandle WHERE scopeId = ? AND path = ?');
@@ -263,5 +270,37 @@ exports.appStateRepository = {
         ON CONFLICT(userId) DO UPDATE SET value = excluded.value
     `;
         client_1.db.prepare(sql).run(userId, strValue);
+    }
+};
+exports.searchRepository = {
+    async indexContent(fileId, content) {
+        const stmt = client_1.db.prepare('INSERT OR REPLACE INTO FileContentIndex(rowid, content) VALUES (?, ?)');
+        stmt.run(fileId, content);
+    },
+    async search(userId, query, mode = 'filename') {
+        if (mode === 'content') {
+            const sql = `
+        SELECT f.id, f.path, f.name, f.extension, f.size, f.updatedAt,
+               snippet(FileContentIndex, 0, '<b>', '</b>', '...', 64) as snippet
+        FROM FileContentIndex fts
+        JOIN FileHandle f ON f.id = fts.rowid
+        JOIN Scope s ON f.scopeId = s.id
+        WHERE s.userId = ? AND fts.content MATCH ?
+        ORDER BY rank
+        LIMIT 50
+      `;
+            return client_1.db.prepare(sql).all(userId, query);
+        }
+        else {
+            const sql = `
+        SELECT f.* 
+        FROM FileHandle f
+        JOIN Scope s ON f.scopeId = s.id
+        WHERE s.userId = ? AND f.name LIKE ?
+        ORDER BY f.updatedAt DESC
+        LIMIT 50
+      `;
+            return client_1.db.prepare(sql).all(userId, `%${query}%`);
+        }
     }
 };

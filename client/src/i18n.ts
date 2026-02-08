@@ -42,7 +42,10 @@ export const translations = {
     directoryEmpty: "Directory is empty",
     name: "Name",
     size: "Size",
-    updated: "Changed"
+    updated: "Changed",
+    searchContent: "Search Content",
+    searchModeFilename: "Filename",
+    searchModeContent: "Content"
   },
   de: {
     searchPlaceholder: "Dateien suchen...",
@@ -87,6 +90,9 @@ export const translations = {
     directoryEmpty: "Verzeichnis ist leer",
     name: "Name",
     size: "Größe",
-    updated: "Geändert"
+    updated: "Geändert",
+    searchContent: "Inhaltssuche",
+    searchModeFilename: "Dateiname",
+    searchModeContent: "Inhalt"
   }
 };

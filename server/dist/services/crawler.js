@@ -21,6 +21,15 @@ exports.crawlerService = {
     },
     async scanScope(scopeId, directoryPath) {
         console.log(`[CRAWLER] Starting async scan for scope ${scopeId}: ${directoryPath}`);
+        const scopeObj = await repository_1.scopeRepository.getById(scopeId);
+        if (!scopeObj) {
+            console.error(`[CRAWLER] Scope ${scopeId} not found`);
+            return;
+        }
+        const appState = await repository_1.appStateRepository.get(scopeObj.userId);
+        const searchSettings = appState && appState.search_settings ? appState.search_settings : {};
+        const allowedExtensions = searchSettings.allowedExtensions ||
+            ['.txt', '.md', '.markdown', '.json', '.ts', '.js', '.jsx', '.tsx', '.html', '.css', '.scss', '.xml', '.yaml', '.yml', '.sql', '.env'];
         let fileCount = 0;
         let ignoredCount = 0;
         const startTime = Date.now();
@@ -53,11 +62,22 @@ exports.crawlerService = {
                     else if (entry.isFile()) {
                         try {
                             const stats = await fs_1.default.promises.stat(fullPath);
-                            await repository_1.fileRepository.upsertFile(scopeId, fullPath, {
+                            const fileId = await repository_1.fileRepository.upsertFile(scopeId, fullPath, {
                                 size: stats.size,
                                 ctime: stats.ctime,
                                 mtime: stats.mtime
                             });
+                            // Index content if allowed and < 5MB
+                            const ext = path_1.default.extname(fullPath).toLowerCase();
+                            if (allowedExtensions.includes(ext) && stats.size < 5 * 1024 * 1024) {
+                                try {
+                                    const content = await fs_1.default.promises.readFile(fullPath, 'utf8');
+                                    await repository_1.searchRepository.indexContent(fileId, content);
+                                }
+                                catch (err) {
+                                    // ignore content read errors
+                                }
+                            }
                             fileCount++;
                             if (fileCount % 100 === 0) {
                                 console.log(`[CRAWLER] Scope ${scopeId}: Processed ${fileCount} files...`);

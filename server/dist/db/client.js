@@ -77,6 +77,11 @@ if (worker_threads_1.isMainThread) {
         userId INTEGER UNIQUE NOT NULL,
         FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
       );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS FileContentIndex USING fts5(
+        content,
+        tokenize='porter'
+      );
     `;
     exports.db.exec(schema);
     console.log(`Database initialized at ${dbPath}`);

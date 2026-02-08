@@ -1,10 +1,39 @@
-import { fileRepository, scopeRepository } from '../db/repository';
+import { fileRepository, scopeRepository, searchRepository, appStateRepository } from '../db/repository';
 import fs from 'fs';
 import path from 'path';
+const pdf = require('pdf-parse');
+import mammoth from 'mammoth';
+
+async function extractText(filePath: string, extension: string): Promise<string | null> {
+    try {
+        if (extension === '.pdf') {
+            const dataBuffer = await fs.promises.readFile(filePath);
+            const data = await pdf(dataBuffer);
+            return data.text;
+        } else if (extension === '.docx') {
+            const result = await mammoth.extractRawText({ path: filePath });
+            return result.value;
+        } else {
+            // Default text file
+            return await fs.promises.readFile(filePath, 'utf8');
+        }
+    } catch (error) {
+        console.error(`[CRAWLER] Failed to extract text from ${filePath}:`, error);
+        return null;
+    }
+}
 
 export const crawlerService = {
   async init() {
     console.log('[CRAWLER] Initializing in async mode...');
+    const scopes = await scopeRepository.getAll();
+    for (const s of scopes) {
+        const scope = s as { id: number, path: string };
+        console.log(`[CRAWLER] Triggering startup scan for scope ${scope.id} (${scope.path})`);
+        this.scanScope(scope.id, scope.path).catch(err => {
+             console.error(`[CRAWLER] Error scanning scope ${scope.id} on startup:`, err);
+        });
+    }
   },
 
   async addScope(userId: number, directoryPath: string) {
@@ -18,6 +47,16 @@ export const crawlerService = {
 
   async scanScope(scopeId: number, directoryPath: string) {
     console.log(`[CRAWLER] Starting async scan for scope ${scopeId}: ${directoryPath}`);
+    
+    const scopeObj = await scopeRepository.getById(scopeId) as { userId: number } | undefined;
+    if (!scopeObj) { console.error(`[CRAWLER] Scope ${scopeId} not found`); return; }
+
+    const appState = await appStateRepository.get(scopeObj.userId);
+    const searchSettings = appState && appState.search_settings ? appState.search_settings : {};
+    
+    // Expanded default allowed extensions
+    const allowedExtensions = searchSettings.allowedExtensions || 
+        ['.txt', '.md', '.markdown', '.json', '.ts', '.js', '.jsx', '.tsx', '.html', '.css', '.scss', '.xml', '.yaml', '.yml', '.sql', '.env', '.pdf', '.docx'];
     
     let fileCount = 0;
     let ignoredCount = 0;
@@ -55,11 +94,27 @@ export const crawlerService = {
                 } else if (entry.isFile()) {
                     try {
                         const stats = await fs.promises.stat(fullPath);
-                        await fileRepository.upsertFile(scopeId, fullPath, { 
+                        const fileId = await fileRepository.upsertFile(scopeId, fullPath, { 
                             size: stats.size, 
                             ctime: stats.ctime, 
                             mtime: stats.mtime 
                         });
+                        
+                        const ext = path.extname(fullPath).toLowerCase();
+                        
+                        // Limit: 20MB for binary, 5MB for text
+                        const maxSize = (ext === '.pdf' || ext === '.docx') ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
+
+                        if (allowedExtensions.includes(ext) && stats.size < maxSize) {
+                            try {
+                                const content = await extractText(fullPath, ext);
+                                if (content) {
+                                    await searchRepository.indexContent(fileId, content);
+                                }
+                            } catch (err) {
+                                console.error(`[CRAWLER] Failed to index content for ${fullPath}:`, err);
+                            }
+                        }
                         
                         fileCount++;
                         if (fileCount % 100 === 0) {

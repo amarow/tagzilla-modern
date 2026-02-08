@@ -1,4 +1,4 @@
-import { AppShell, Burger, Group, Text, ScrollArea, Button, Stack, Badge, ActionIcon, TextInput, NavLink, useMantineColorScheme, Card, PasswordInput, Container, Modal, ColorSwatch, Alert, Center } from '@mantine/core';
+import { AppShell, Burger, Group, Text, ScrollArea, Button, Stack, Badge, ActionIcon, TextInput, NavLink, useMantineColorScheme, Card, PasswordInput, Container, Modal, ColorSwatch, Alert, Center, Checkbox, Loader } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconTags, IconPlus, IconX, IconSearch, IconSun, IconMoon, IconLogout, IconTrash, IconSettings, IconPencil, IconCheck } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
@@ -31,7 +31,8 @@ export default function App() {
     tags, isLoading, 
     selectedTagId, searchQuery, selectedFileIds,
     init, addTagToFile, addTagToMultipleFiles, createTag, deleteTag, updateTag,
-    setTagFilter, setSearchQuery, language, toggleLanguage
+    setTagFilter, setSearchQuery, language, toggleLanguage,
+    searchMode, setSearchMode, performSearch, isSearching
   } = useAppStore();
   
   const t = translations[language];
@@ -204,7 +205,7 @@ export default function App() {
           </Group>
 
           
-          <Group>
+          <Group gap="sm">
             <TextInput 
                 placeholder={t.searchPlaceholder}
                 leftSection={<IconSearch size={16} />} 
@@ -214,13 +215,26 @@ export default function App() {
                     setSearchQuery(e.currentTarget.value);
                     if (location.pathname !== '/') navigate('/');
                 }}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' && searchMode === 'content') {
+                        performSearch();
+                    }
+                }}
                 rightSection={
-                searchQuery ? (
-                    <ActionIcon variant="transparent" c="dimmed" onClick={() => setSearchQuery('')}>
-                    <IconX size={14} />
-                    </ActionIcon>
-                ) : null
+                    isSearching ? <Loader size="xs" /> : (
+                        searchQuery ? (
+                            <ActionIcon variant="transparent" c="dimmed" onClick={() => setSearchQuery('')}>
+                                <IconX size={14} />
+                            </ActionIcon>
+                        ) : null
+                    )
                 }
+            />
+            <Checkbox
+                label={t.searchContent}
+                checked={searchMode === 'content'}
+                onChange={(e) => setSearchMode(e.currentTarget.checked ? 'content' : 'filename')}
+                size="xs"
             />
           </Group>
 

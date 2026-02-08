@@ -50,6 +50,9 @@ interface AppState {
   activeScopeIds: number[];
   selectedTagId: number | null;
   searchQuery: string;
+  searchMode: 'filename' | 'content';
+  searchResults: FileHandle[];
+  isSearching: boolean;
   
   // UI State
   language: 'en' | 'de';
@@ -86,6 +89,8 @@ interface AppState {
   toggleScopeActive: (id: number) => void;
   setTagFilter: (id: number | null) => void;
   setSearchQuery: (query: string) => void;
+  setSearchMode: (mode: 'filename' | 'content') => void;
+  performSearch: () => Promise<void>;
 
   // Selection Actions
   toggleFileSelection: (fileId: number) => void;
@@ -146,6 +151,9 @@ export const useAppStore = create<AppState>()(
       activeScopeIds: [],
       selectedTagId: null,
       searchQuery: '',
+      searchMode: 'filename',
+      searchResults: [],
+      isSearching: false,
       
       language: 'en',
 
@@ -238,6 +246,34 @@ export const useAppStore = create<AppState>()(
       setSearchQuery: (query) => {
           set({ searchQuery: query });
           savePreferences(get());
+      },
+
+      setSearchMode: (mode) => {
+          set({ searchMode: mode });
+          if (get().searchQuery && mode === 'content') {
+               get().performSearch();
+          }
+      },
+
+      performSearch: async () => {
+          const { token, searchMode, searchQuery } = get();
+          if (!searchQuery.trim()) {
+              set({ searchResults: [], isSearching: false });
+              return;
+          }
+          
+          set({ isSearching: true, error: null });
+          try {
+              const res = await authFetch(`${API_BASE}/api/search?q=${encodeURIComponent(searchQuery)}&mode=${searchMode}`, token);
+              if (res.ok) {
+                  const data = await res.json();
+                  set({ searchResults: data, isSearching: false });
+              } else {
+                  throw new Error("Search failed");
+              }
+          } catch (e: any) {
+              set({ isSearching: false, error: e.message });
+          }
       },
 
       toggleFileSelection: (fileId) => {

@@ -76,6 +76,15 @@ if (isMainThread) {
         userId INTEGER UNIQUE NOT NULL,
         FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
       );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS FileContentIndex USING fts5(
+        content,
+        tokenize='porter'
+      );
+
+      CREATE TRIGGER IF NOT EXISTS FileHandle_AD AFTER DELETE ON FileHandle BEGIN
+        DELETE FROM FileContentIndex WHERE rowid = old.id;
+      END;
     `;
     db.exec(schema);
     console.log(`Database initialized at ${dbPath}`);

@@ -15,6 +15,7 @@
 - Die FileHandles (Referenzen auf die echten Files) und Tags zu den Files werden in der DB abgelegt
 - es können mehrere Tags zu einem File angefügt/entfernt werden
 - der Server soll überwachen (watch Mode) und Änderungen (Dateiname, Datum, Size) zum Client posten
+- der Server soll eine Index anlegen 
 
 ## Frontend (React/Vite)
 - Typescript

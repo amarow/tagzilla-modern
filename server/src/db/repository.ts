@@ -48,24 +48,28 @@ export const fileRepository = {
     // Using UPSERT syntax (INSERT OR REPLACE / ON CONFLICT)
     // SQLite supports ON CONFLICT(scopeId, path) DO UPDATE
     // Use mtime (modification time) from file stats for updatedAt
+    // We use RETURNING id to get the correct ID even if no update happens or cached
     const sql = `
       INSERT INTO FileHandle (scopeId, path, name, extension, size, mimeType, updatedAt)
       VALUES (@scopeId, @path, @name, @extension, @size, @mimeType, @mtime)
       ON CONFLICT(scopeId, path) DO UPDATE SET
         size = excluded.size,
         updatedAt = excluded.updatedAt
+      RETURNING id
     `;
     
     const stmt = db.prepare(sql);
-    stmt.run({
+    const row = stmt.get({
         scopeId,
         path: filePath,
         name: filename,
         extension,
         size: stats.size,
         mimeType,
-        mtime: stats.mtime.toISOString() // Store as ISO string
-    });
+        mtime: stats.mtime.toISOString()
+    }) as { id: number };
+
+    return row.id;
   },
 
   async removeFile(scopeId: number, filePath: string) {
@@ -290,5 +294,62 @@ export const appStateRepository = {
         ON CONFLICT(userId) DO UPDATE SET value = excluded.value
     `;
     db.prepare(sql).run(userId, strValue);
+  }
+};
+
+export const searchRepository = {
+  async indexContent(fileId: number, content: string) {
+    const stmt = db.prepare('INSERT OR REPLACE INTO FileContentIndex(rowid, content) VALUES (?, ?)');
+    stmt.run(fileId, content);
+  },
+
+  async search(userId: number, query: string, mode: 'filename' | 'content' = 'filename') {
+    let rows;
+    if (mode === 'content') {
+      const terms = query.trim().split(/\s+/).filter(t => t.length > 0);
+      if (terms.length === 0) return [];
+      
+      // Construct FTS query: "term1"* AND "term2"*
+      const ftsQuery = terms.map(t => `"${t.replace(/"/g, '""')}"*`).join(' AND ');
+
+      const sql = `
+        SELECT f.*,
+               snippet(FileContentIndex, 0, '<b>', '</b>', '...', 64) as snippet,
+               (
+                   SELECT json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color))
+                   FROM _FileHandleToTag ft
+                   JOIN Tag t ON ft.B = t.id
+                   WHERE ft.A = f.id
+               ) as tags_json
+        FROM FileContentIndex fts
+        JOIN FileHandle f ON f.id = fts.rowid
+        JOIN Scope s ON f.scopeId = s.id
+        WHERE s.userId = ? AND fts.content MATCH ?
+        ORDER BY rank
+        LIMIT 50
+      `;
+      rows = db.prepare(sql).all(userId, ftsQuery);
+    } else {
+      const sql = `
+        SELECT f.*,
+               (
+                   SELECT json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color))
+                   FROM _FileHandleToTag ft
+                   JOIN Tag t ON ft.B = t.id
+                   WHERE ft.A = f.id
+               ) as tags_json
+        FROM FileHandle f
+        JOIN Scope s ON f.scopeId = s.id
+        WHERE s.userId = ? AND f.name LIKE ?
+        ORDER BY f.updatedAt DESC
+        LIMIT 50
+      `;
+      rows = db.prepare(sql).all(userId, `%${query}%`);
+    }
+
+    return rows.map((row: any) => ({
+        ...row,
+        tags: row.tags_json ? JSON.parse(row.tags_json).filter((t: any) => t.id !== null) : []
+    }));
   }
 };
