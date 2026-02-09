@@ -48,7 +48,7 @@ interface AppState {
   
   // Filter State
   activeScopeIds: number[];
-  selectedTagId: number | null;
+  selectedTagIds: number[];
   searchQuery: string;
   searchMode: 'filename' | 'content';
   searchResults: FileHandle[];
@@ -64,6 +64,7 @@ interface AppState {
   // Auth Actions
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
+  changePassword: (current: string, newP: string) => Promise<void>;
   logout: () => void;
   toggleLanguage: () => void;
 
@@ -76,10 +77,12 @@ interface AppState {
   addScope: (path: string) => Promise<void>;
   deleteScope: (id: number) => Promise<void>;
   refreshScope: (id: number) => Promise<void>;
+  refreshAllScopes: () => Promise<void>;
   
   addTagToFile: (fileId: number, tagName: string) => Promise<void>;
   addTagToMultipleFiles: (fileIds: number[], tagName: string) => Promise<void>;
   removeTagFromFile: (fileId: number, tagId: number) => Promise<void>;
+  removeTagFromMultipleFiles: (fileIds: number[], tagId: number) => Promise<void>;
   
   createTag: (name: string, color?: string) => Promise<void>;
   updateTag: (id: number, updates: { name?: string; color?: string }) => Promise<void>;
@@ -89,7 +92,9 @@ interface AppState {
   
   // Filter Actions
   toggleScopeActive: (id: number) => void;
-  setTagFilter: (id: number | null) => void;
+  toggleTagFilter: (id: number) => void;
+  selectSingleTag: (id: number) => void;
+  clearTagFilters: () => void;
   setSearchQuery: (query: string) => void;
   setSearchMode: (mode: 'filename' | 'content') => void;
   performSearch: () => Promise<void>;
@@ -124,7 +129,7 @@ const savePreferences = async (state: AppState) => {
   if (!state.token) return;
   const prefs = {
     activeScopeIds: state.activeScopeIds,
-    selectedTagId: state.selectedTagId,
+    selectedTagIds: state.selectedTagIds,
     searchQuery: state.searchQuery
   };
   try {
@@ -151,7 +156,7 @@ export const useAppStore = create<AppState>()(
       error: null,
       
       activeScopeIds: [],
-      selectedTagId: null,
+      selectedTagIds: [],
       searchQuery: '',
       searchMode: 'filename',
       searchResults: [],
@@ -203,6 +208,25 @@ export const useAppStore = create<AppState>()(
           }
       },
 
+      changePassword: async (current, newP) => {
+          set({ isLoading: true, error: null });
+          try {
+              const res = await authFetch(`${API_BASE}/api/user/password`, get().token, {
+                  method: 'POST',
+                  body: JSON.stringify({ currentPassword: current, newPassword: newP })
+              });
+              if (!res.ok) {
+                  const data = await res.json();
+                  throw new Error(data.error || 'Password change failed');
+              }
+              set({ isLoading: false, error: null });
+              alert("Password changed successfully.");
+          } catch (e: any) {
+              set({ error: e.message, isLoading: false });
+              throw e;
+          }
+      },
+
       logout: () => {
           set({ token: null, user: null, isAuthenticated: false, files: [], scopes: [], tags: [], selectedFileIds: [] });
       },
@@ -217,7 +241,7 @@ export const useAppStore = create<AppState>()(
               if (prefs) {
                   set({ 
                       activeScopeIds: prefs.activeScopeIds || [],
-                      selectedTagId: prefs.selectedTagId || null,
+                      selectedTagIds: prefs.selectedTagIds || (prefs.selectedTagId ? [prefs.selectedTagId] : []),
                       searchQuery: prefs.searchQuery || ''
                   });
               }
@@ -243,8 +267,23 @@ export const useAppStore = create<AppState>()(
           savePreferences(get());
       },
       
-      setTagFilter: (id) => {
-          set({ selectedTagId: id });
+      toggleTagFilter: (id) => {
+          const { selectedTagIds } = get();
+          if (selectedTagIds.includes(id)) {
+              set({ selectedTagIds: selectedTagIds.filter(tid => tid !== id) });
+          } else {
+              set({ selectedTagIds: [...selectedTagIds, id] });
+          }
+          savePreferences(get());
+      },
+
+      selectSingleTag: (id) => {
+          set({ selectedTagIds: [id] });
+          savePreferences(get());
+      },
+
+      clearTagFilters: () => {
+          set({ selectedTagIds: [] });
           savePreferences(get());
       },
 
@@ -377,10 +416,23 @@ export const useAppStore = create<AppState>()(
               throw new Error(errData.error || 'Failed to refresh scope');
           }
           await get().fetchFiles();
+          await get().fetchTags(); // Update tag counts
           set({ isLoading: false, error: null });
         } catch (error: any) {
           set({ error: error.message, isLoading: false });
         }
+      },
+
+      refreshAllScopes: async () => {
+          const { activeScopeIds, refreshScope, fetchTags } = get();
+          // Trigger refresh for all active scopes
+          // We do this in parallel but without waiting for completion to keep UI responsive
+          // (refreshScope is already optimistic/background on server side mostly)
+          for (const id of activeScopeIds) {
+              await refreshScope(id);
+          }
+          // After requesting refreshes, fetch tags to update counts (in case of manual changes or previous scans finishing)
+          await fetchTags();
       },
 
       createTag: async (name: string, color?: string) => {
@@ -438,7 +490,10 @@ export const useAppStore = create<AppState>()(
             method: 'DELETE',
           });
           if (response.ok) {
-            if (get().selectedTagId === id) get().setTagFilter(null);
+            const { selectedTagIds } = get();
+            if (selectedTagIds.includes(id)) {
+                set({ selectedTagIds: selectedTagIds.filter(tid => tid !== id) });
+            }
             await get().fetchTags();
             await get().fetchFiles();
           }
@@ -496,17 +551,98 @@ export const useAppStore = create<AppState>()(
           }
       },
 
+      removeTagFromMultipleFiles: async (fileIds: number[], tagId: number) => {
+          const { token, files, tags } = get();
+          
+          // Optimistic Update Files
+          const fileIdSet = new Set(fileIds);
+          let removedCount = 0;
+
+          const newFiles = files.map(f => {
+              if (fileIdSet.has(f.id)) {
+                  // Check if tag actually exists on file to verify count decrement
+                  if (f.tags.some(t => t.id === tagId)) {
+                      removedCount++;
+                      return { ...f, tags: f.tags.filter(t => t.id !== tagId) };
+                  }
+              }
+              return f;
+          });
+
+          // Optimistic Update Tags
+          const newTags = tags.map(t => {
+              if (t.id === tagId) {
+                  const current = t._count?.files || 0;
+                  return { ...t, _count: { files: Math.max(0, current - removedCount) } };
+              }
+              return t;
+          });
+
+          set({ files: newFiles, tags: newTags });
+
+          try {
+              const res = await authFetch(`${API_BASE}/api/files/bulk-tags`, token, {
+                  method: 'DELETE',
+                  body: JSON.stringify({ fileIds, tagId })
+              });
+              
+              if (!res.ok) {
+                  throw new Error('Bulk remove failed');
+              }
+              // We already updated optimistically, but let's sync to be sure
+              await get().fetchTags(); 
+          } catch (e) {
+              console.error('Failed to remove tags from multiple files', e);
+              // Revert/Sync on error
+              await get().fetchFiles();
+              await get().fetchTags();
+          }
+      },
+
       removeTagFromFile: async (fileId: number, tagId: number) => {
+        const { selectedFileIds } = get();
+
+        // If the file is part of the current selection, remove tag from ALL selected files
+        if (selectedFileIds.includes(fileId) && selectedFileIds.length > 0) {
+            await get().removeTagFromMultipleFiles(selectedFileIds, tagId);
+            return;
+        }
+
         try {
+          const { files, tags } = get();
+          // Optimistic
+          const newFiles = files.map(f => {
+              if (f.id === fileId) {
+                  return { ...f, tags: f.tags.filter(t => t.id !== tagId) };
+              }
+              return f;
+          });
+
+          // Optimistic Tag Count
+          const newTags = tags.map(t => {
+              if (t.id === tagId) {
+                  const current = t._count?.files || 0;
+                  return { ...t, _count: { files: Math.max(0, current - 1) } };
+              }
+              return t;
+          });
+
+          set({ files: newFiles, tags: newTags });
+
           const response = await authFetch(`${API_BASE}/api/files/${fileId}/tags/${tagId}`, get().token, {
             method: 'DELETE',
           });
           if (response.ok) {
-            await get().fetchFiles();
+            // await get().fetchFiles(); // No need if optimistic was correct
             await get().fetchTags();
+          } else {
+             await get().fetchFiles(); // Revert
+             await get().fetchTags();
           }
         } catch (error) {
           console.error('Failed to remove tag', error);
+          await get().fetchFiles(); // Revert
+          await get().fetchTags();
         }
       },
 
@@ -519,7 +655,7 @@ export const useAppStore = create<AppState>()(
       },
     }),
     {
-      name: 'tagzilla-auth-storage', 
+      name: 'tagzilla-auth-storage-v2', 
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({ 
         token: state.token,

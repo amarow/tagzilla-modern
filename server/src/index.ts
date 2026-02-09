@@ -94,6 +94,23 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+app.post('/api/user/password', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const { currentPassword, newPassword } = req.body;
+        if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Missing password fields' });
+
+        await authService.changePassword(userId, currentPassword, newPassword);
+        res.json({ success: true });
+    } catch (e: any) {
+        if (e.message === 'Invalid current password') {
+            res.status(401).json({ error: e.message });
+        } else {
+            res.status(500).json({ error: e.message });
+        }
+    }
+});
+
 // --- Protected Routes ---
 
 app.get('/status', authenticateToken, async (req, res) => {
@@ -346,6 +363,24 @@ app.post('/api/files/bulk-tags', authenticateToken, async (req, res) => {
         res.json(result);
     } catch (e: any) {
         console.error(`[API] Bulk tag failed:`, e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/files/bulk-tags', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const { fileIds, tagId } = req.body;
+        
+        if (!fileIds || !Array.isArray(fileIds) || !tagId) {
+             res.status(400).json({ error: 'Invalid payload' });
+             return;
+        }
+        
+        const result = await fileRepository.removeTagFromFiles(userId, fileIds, Number(tagId));
+        res.json(result);
+    } catch (e: any) {
+        console.error(`[API] Bulk tag remove failed:`, e);
         res.status(500).json({ error: e.message });
     }
 });

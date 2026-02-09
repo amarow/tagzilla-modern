@@ -1,27 +1,63 @@
 import { 
     Title, Container, Button, Group, Text, Card, Stack, 
-    ActionIcon, ScrollArea, Modal, TextInput, Loader, Checkbox 
+    ActionIcon, ScrollArea, Modal, TextInput, Loader, Checkbox,
+    useMantineColorScheme, SegmentedControl, PasswordInput
 } from '@mantine/core';
 import { 
-    IconFolder, IconPlus, IconRefresh, IconTrash, IconArrowUp, IconCheck 
+    IconFolder, IconPlus, IconRefresh, IconTrash, IconArrowUp, IconCheck, IconKey,
+    IconSunHigh, IconMoonStars, IconArrowLeft
 } from '@tabler/icons-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
+import { useNavigate } from 'react-router-dom';
 import { translations } from '../i18n';
 
 export function SettingsPage() {
     const { 
         scopes, addScope, refreshScope, deleteScope, token, 
-        activeScopeIds, toggleScopeActive, language
+        activeScopeIds, toggleScopeActive, language, user,
+        changePassword, isLoading
     } = useAppStore();
 
     const t = translations[language];
+    const navigate = useNavigate();
+    const { colorScheme, toggleColorScheme, setColorScheme } = useMantineColorScheme();
+
+    // Password Change State
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
 
     // Directory Browser State
     const [isBrowserOpen, setIsBrowserOpen] = useState(false);
     const [browserPath, setBrowserPath] = useState('');
     const [browserEntries, setBrowserEntries] = useState<any[]>([]);
     const [isBrowserLoading, setIsBrowserLoading] = useState(false);
+
+    // Escape Key Listener
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (isBrowserOpen) {
+                    setIsBrowserOpen(false);
+                } else {
+                    navigate('/');
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [navigate, isBrowserOpen]);
+
+    const handleChangePassword = async () => {
+        if (!currentPassword || !newPassword) return;
+        try {
+            await changePassword(currentPassword, newPassword);
+            setCurrentPassword('');
+            setNewPassword('');
+        } catch (e) {
+            // Error handled in store (alert/state)
+        }
+    };
 
     const fetchDirectory = async (path: string = '') => {
         setIsBrowserLoading(true);
@@ -59,7 +95,15 @@ export function SettingsPage() {
 
     return (
         <Container size="md" py="xl">
-            <Title order={2} mb="md">{t.settings}</Title>
+            <Group justify="space-between" mb="md">
+                <Group>
+                    <ActionIcon variant="subtle" color="gray" onClick={() => navigate('/')}>
+                        <IconArrowLeft size={24} />
+                    </ActionIcon>
+                    <Title order={2}>{t.settings}</Title>
+                </Group>
+                <Text c="dimmed">{user?.username}</Text>
+            </Group>
             
             <Card withBorder shadow="sm" radius="md">
                 <Card.Section withBorder inheritPadding py="xs">
@@ -123,6 +167,61 @@ export function SettingsPage() {
                         </Group>
                     ))}
                 </Stack>
+            </Card>
+
+            <Title order={3} mt="xl" mb="md">{t.appearance}</Title>
+            <Card withBorder shadow="sm" radius="md">
+                <Group justify="space-between">
+                    <Group>
+                        {colorScheme === 'dark' ? <IconMoonStars size={20} /> : <IconSunHigh size={20} />}
+                        <Text fw={500}>{t.toggleTheme}</Text>
+                    </Group>
+                    <SegmentedControl 
+                        value={colorScheme}
+                        onChange={(val: any) => setColorScheme(val)}
+                        data={[
+                            { label: 'Light', value: 'light' },
+                            { label: 'Dark', value: 'dark' },
+                            { label: 'Auto', value: 'auto' }
+                        ]}
+                    />
+                </Group>
+            </Card>
+
+            <Title order={3} mt="xl" mb="md">{t.security}</Title>
+            <Card withBorder shadow="sm" radius="md">
+                <form autoComplete="off">
+                <Stack gap="md">
+                    <Text fw={500}>{t.security}</Text>
+                    {/* Fake hidden fields to trick browser */}
+                    <input type="text" style={{display: 'none'}} autoComplete="username" />
+                    <input type="password" style={{display: 'none'}} autoComplete="current-password" />
+
+                    <Group align="flex-end">
+                        <PasswordInput 
+                            label={t.currentPassword} 
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.currentTarget.value)}
+                            autoComplete="current-password"
+                            name="current_password_field"
+                        />
+                        <PasswordInput 
+                            label={t.newPassword} 
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.currentTarget.value)}
+                            autoComplete="new-password"
+                            name="new_password_field"
+                        />
+                        <Button 
+                            onClick={handleChangePassword} 
+                            loading={isLoading}
+                            disabled={!currentPassword || !newPassword}
+                        >
+                            {t.update}
+                        </Button>
+                    </Group>
+                </Stack>
+                </form>
             </Card>
 
             <Modal 

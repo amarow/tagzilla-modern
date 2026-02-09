@@ -17,7 +17,7 @@ class CrawlerWorkerPool {
     private workers: Worker[] = [];
     private taskQueue: WorkerTask[] = [];
     private activeWorkers: number = 0;
-    private maxWorkers: number = 4; // User requested 8 cores
+    private maxWorkers: number = 8; // User requested 8 cores
     private workerScript: string;
 
     constructor() {
@@ -203,6 +203,7 @@ export const crawlerService = {
     let fileCount = 0;
     let ignoredCount = 0;
     let skippedCount = 0;
+    const foundFileIds: number[] = [];
     const startTime = Date.now();
     const queue: { path: string, depth: number }[] = [{ path: directoryPath, depth: 0 }];
 
@@ -219,8 +220,12 @@ export const crawlerService = {
                 return;
             }
 
+            // Prune files not found in this scan
+            console.log(`[CRAWLER] Pruning deleted files for scope ${scopeId}...`);
+            const deletedCount = await fileRepository.pruneFiles(scopeId, foundFileIds);
+            
             const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-            console.log(`[CRAWLER] Finished scan for scope ${scopeId}. Total: ${fileCount} files. Skipped (unchanged): ${skippedCount}. Ignored: ${ignoredCount} items. Time: ${duration}s.`);
+            console.log(`[CRAWLER] Finished scan for scope ${scopeId}. Total: ${fileCount} files. Skipped (unchanged): ${skippedCount}. Deleted: ${deletedCount}. Ignored: ${ignoredCount} items. Time: ${duration}s.`);
             return;
         }
 
@@ -256,12 +261,14 @@ export const crawlerService = {
                         if (existing && existing.updatedAt === mtimeStr && existing.size === stats.size) {
                             skippedCount++;
                             fileCount++; // Still count as "processed" in total
+                            foundFileIds.push(existing.id);
                         } else {
                             const fileId = await fileRepository.upsertFile(scopeId, fullPath, { 
                                 size: stats.size, 
                                 ctime: stats.ctime, 
                                 mtime: stats.mtime 
                             });
+                            foundFileIds.push(fileId);
                             
                             const ext = path.extname(fullPath).toLowerCase();
                             

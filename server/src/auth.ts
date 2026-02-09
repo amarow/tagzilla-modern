@@ -31,6 +31,33 @@ export const authService = {
 
     const token = jwt.sign({ id: user.id, username: user.username }, SECRET_KEY, { expiresIn: '7d' });
     return { token, user: { id: user.id, username: user.username } };
+  },
+
+  async changePassword(userId: number, currentPassword: string, newPassword: string) {
+    console.log(`[Auth] Attempting password change for user ${userId}`);
+    const stmt = db.prepare('SELECT * FROM User WHERE id = ?');
+    const user: any = stmt.get(userId);
+    
+    if (!user) {
+        console.error(`[Auth] User ${userId} not found`);
+        throw new Error('User not found');
+    }
+
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) {
+        console.error(`[Auth] Invalid current password for user ${userId}`);
+        throw new Error('Invalid current password');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const updateStmt = db.prepare('UPDATE User SET password = ? WHERE id = ?');
+    const info = updateStmt.run(hashedPassword, userId);
+    
+    console.log(`[Auth] Password updated for user ${userId}. Changes: ${info.changes}`);
+
+    if (info.changes === 0) {
+        throw new Error('Failed to update password in database');
+    }
   }
 };
 

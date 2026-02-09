@@ -46,8 +46,18 @@ exports.fileRepository = {
             mimeType = 'image/jpeg';
         if (extension === '.png')
             mimeType = 'image/png';
+        if (extension === '.avif')
+            mimeType = 'image/avif';
         if (extension === '.docx')
             mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        if (extension === '.avi')
+            mimeType = 'video/x-msvideo';
+        if (extension === '.mp4')
+            mimeType = 'video/mp4';
+        if (extension === '.mkv')
+            mimeType = 'video/x-matroska';
+        if (extension === '.mov')
+            mimeType = 'video/quicktime';
         // Using UPSERT syntax (INSERT OR REPLACE / ON CONFLICT)
         // SQLite supports ON CONFLICT(scopeId, path) DO UPDATE
         // Use mtime (modification time) from file stats for updatedAt

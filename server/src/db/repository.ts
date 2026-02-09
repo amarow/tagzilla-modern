@@ -43,7 +43,12 @@ export const fileRepository = {
     if (extension === '.pdf') mimeType = 'application/pdf';
     if (extension === '.jpg' || extension === '.jpeg') mimeType = 'image/jpeg';
     if (extension === '.png') mimeType = 'image/png';
+    if (extension === '.avif') mimeType = 'image/avif';
     if (extension === '.docx') mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (extension === '.avi') mimeType = 'video/x-msvideo';
+    if (extension === '.mp4') mimeType = 'video/mp4';
+    if (extension === '.mkv') mimeType = 'video/x-matroska';
+    if (extension === '.mov') mimeType = 'video/quicktime';
 
     // Using UPSERT syntax (INSERT OR REPLACE / ON CONFLICT)
     // SQLite supports ON CONFLICT(scopeId, path) DO UPDATE
@@ -109,13 +114,13 @@ export const fileRepository = {
   async addTagToFile(userId: number, fileId: number, tagName: string) {
     // Transaction to ensure atomicity
     const runTransaction = db.transaction(() => {
-        // 1. Verify access
+        // 1. Verify access & Get Path
         const fileStmt = db.prepare(`
-            SELECT f.id FROM FileHandle f 
+            SELECT f.path FROM FileHandle f 
             JOIN Scope s ON f.scopeId = s.id 
             WHERE f.id = ? AND s.userId = ?
         `);
-        const file = fileStmt.get(fileId, userId);
+        const file = fileStmt.get(fileId, userId) as { path: string };
         if (!file) throw new Error("File access denied");
 
         // 2. Find or Create Tag
@@ -128,11 +133,22 @@ export const fileRepository = {
         const getTag = db.prepare('SELECT id FROM Tag WHERE userId = ? AND name = ?');
         const tag = getTag.get(userId, tagName) as { id: number };
 
-        // 3. Link File to Tag
+        // 3. Find ALL matching files (same path, same user)
+        const allInstancesStmt = db.prepare(`
+            SELECT f.id FROM FileHandle f
+            JOIN Scope s ON f.scopeId = s.id
+            WHERE f.path = ? AND s.userId = ?
+        `);
+        const instances = allInstancesStmt.all(file.path, userId) as { id: number }[];
+
+        // 4. Link ALL instances to Tag
         const link = db.prepare(`
             INSERT OR IGNORE INTO _FileHandleToTag (A, B) VALUES (?, ?)
         `);
-        link.run(fileId, tag.id);
+        
+        for (const instance of instances) {
+            link.run(instance.id, tag.id);
+        }
         
         return this.getFileWithTags(fileId);
     });
@@ -149,28 +165,41 @@ export const fileRepository = {
         `);
         upsertTag.run(userId, tagName);
         
-        const getTag = db.prepare('SELECT id FROM Tag WHERE userId = ? AND name = ?');
-        const tag = getTag.get(userId, tagName) as { id: number };
+        const getTag = db.prepare('SELECT id, name, color FROM Tag WHERE userId = ? AND name = ?');
+        const tag = getTag.get(userId, tagName) as { id: number, name: string, color: string };
 
         // 2. Process Files
+        // Get all paths first
         const checkFile = db.prepare(`
-            SELECT f.id FROM FileHandle f 
+            SELECT f.path FROM FileHandle f 
             JOIN Scope s ON f.scopeId = s.id 
             WHERE f.id = ? AND s.userId = ?
         `);
+        
+        // Query to find all instances for a path
+        const allInstancesStmt = db.prepare(`
+            SELECT f.id FROM FileHandle f
+            JOIN Scope s ON f.scopeId = s.id
+            WHERE f.path = ? AND s.userId = ?
+        `);
+
         const link = db.prepare(`
             INSERT OR IGNORE INTO _FileHandleToTag (A, B) VALUES (?, ?)
         `);
 
-        const updatedFiles: any[] = [];
+        const updatedFiles: number[] = [];
+        const processedPaths = new Set<string>();
         
         for (const fileId of fileIds) {
-             const file = checkFile.get(fileId, userId);
-             if (file) {
-                 link.run(fileId, tag.id);
-                 // We don't return full objects to save bandwidth on massive updates,
-                 // but returning IDs allows client to update locally.
-                 updatedFiles.push(fileId);
+             const file = checkFile.get(fileId, userId) as { path: string };
+             if (file && !processedPaths.has(file.path)) {
+                 processedPaths.add(file.path);
+                 const instances = allInstancesStmt.all(file.path, userId) as { id: number }[];
+                 
+                 for (const instance of instances) {
+                     link.run(instance.id, tag.id);
+                     updatedFiles.push(instance.id);
+                 }
              }
         }
         
@@ -182,24 +211,100 @@ export const fileRepository = {
      return runTransaction();
   },
 
-  async removeTagFromFile(userId: number, fileId: number, tagId: number) {
+  async removeTagFromFiles(userId: number, fileIds: number[], tagId: number) {
      const runTransaction = db.transaction(() => {
-        // 1. Verify access
-        const fileStmt = db.prepare(`
-            SELECT f.id FROM FileHandle f 
+        const checkFile = db.prepare(`
+            SELECT f.path FROM FileHandle f 
             JOIN Scope s ON f.scopeId = s.id 
             WHERE f.id = ? AND s.userId = ?
         `);
-        const file = fileStmt.get(fileId, userId);
+        
+        const allInstancesStmt = db.prepare(`
+            SELECT f.id FROM FileHandle f
+            JOIN Scope s ON f.scopeId = s.id
+            WHERE f.path = ? AND s.userId = ?
+        `);
+
+        const unlinkOne = db.prepare('DELETE FROM _FileHandleToTag WHERE A = ? AND B = ?');
+
+        const updatedFileIds: number[] = [];
+        const processedPaths = new Set<string>();
+        
+        for (const fileId of fileIds) {
+             const file = checkFile.get(fileId, userId) as { path: string };
+             if (file && !processedPaths.has(file.path)) {
+                 processedPaths.add(file.path);
+                 const instances = allInstancesStmt.all(file.path, userId) as { id: number }[];
+                 
+                 for (const instance of instances) {
+                     const info = unlinkOne.run(instance.id, tagId);
+                     if (info.changes > 0) {
+                         updatedFileIds.push(instance.id);
+                     }
+                 }
+             }
+        }
+        
+        return { tagId, updatedFileIds };
+     });
+     return runTransaction();
+  },
+
+  async removeTagFromFile(userId: number, fileId: number, tagId: number) {
+     const runTransaction = db.transaction(() => {
+        // 1. Verify access & Get Path
+        const fileStmt = db.prepare(`
+            SELECT f.path FROM FileHandle f 
+            JOIN Scope s ON f.scopeId = s.id 
+            WHERE f.id = ? AND s.userId = ?
+        `);
+        const file = fileStmt.get(fileId, userId) as { path: string };
         if (!file) throw new Error("File access denied");
 
-        // 2. Unlink
+        // 2. Find ALL matching files
+        const allInstancesStmt = db.prepare(`
+            SELECT f.id FROM FileHandle f
+            JOIN Scope s ON f.scopeId = s.id
+            WHERE f.path = ? AND s.userId = ?
+        `);
+        const instances = allInstancesStmt.all(file.path, userId) as { id: number }[];
+
+        // 3. Unlink ALL instances
         const unlink = db.prepare('DELETE FROM _FileHandleToTag WHERE A = ? AND B = ?');
-        unlink.run(fileId, tagId);
+        
+        for (const instance of instances) {
+            unlink.run(instance.id, tagId);
+        }
 
         return this.getFileWithTags(fileId);
      });
      return runTransaction();
+  },
+
+  async pruneFiles(scopeId: number, validFileIds: number[]) {
+      // 1. Get all file IDs for this scope
+      const allFilesStmt = db.prepare('SELECT id FROM FileHandle WHERE scopeId = ?');
+      const allFiles = allFilesStmt.all(scopeId) as { id: number }[];
+      
+      const validSet = new Set(validFileIds);
+      const toDelete = allFiles.filter(f => !validSet.has(f.id)).map(f => f.id);
+      
+      if (toDelete.length === 0) return 0;
+
+      const deleteStmt = db.prepare('DELETE FROM FileHandle WHERE id = ?');
+      const deleteTagsStmt = db.prepare('DELETE FROM _FileHandleToTag WHERE A = ?');
+      const deleteContentStmt = db.prepare('DELETE FROM FileContentIndex WHERE rowid = ?');
+
+      const runTransaction = db.transaction(() => {
+          for (const id of toDelete) {
+              deleteTagsStmt.run(id); // Clean up tags
+              deleteContentStmt.run(id); // Clean up FTS index
+              deleteStmt.run(id);
+          }
+          return toDelete.length;
+      });
+
+      return runTransaction();
   },
 
   // Helper

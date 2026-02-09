@@ -13,7 +13,7 @@ class CrawlerWorkerPool {
         this.workers = [];
         this.taskQueue = [];
         this.activeWorkers = 0;
-        this.maxWorkers = 8; // User requested 8 cores
+        this.maxWorkers = 4; // User requested 8 cores
         // Determine correct path and execution args based on environment (ts-node vs node)
         const isTsNode = __filename.endsWith('.ts');
         this.workerScript = isTsNode

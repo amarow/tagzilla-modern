@@ -1,11 +1,11 @@
-import { Modal, Image, Text, LoadingOverlay, Button, Group, ScrollArea, Center, Code, Table } from '@mantine/core';
+import { Image, Text, LoadingOverlay, Button, Group, Center, Code, Table, Paper, ActionIcon, Stack } from '@mantine/core';
 import { useAppStore } from '../store';
 import { useEffect, useState } from 'react';
-import { IconExternalLink, IconFileUnknown } from '@tabler/icons-react';
+import { IconExternalLink, IconFileUnknown, IconArrowLeft, IconX } from '@tabler/icons-react';
 import ReactMarkdown from 'react-markdown';
 import Papa from 'papaparse';
 
-export function FilePreviewModal() {
+export function FilePreviewPanel() {
     const { previewFileId, setPreviewFileId, files, searchResults, token, openFile } = useAppStore();
     const [textContent, setTextContent] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -16,13 +16,25 @@ export function FilePreviewModal() {
 
     const API_BASE = 'http://localhost:3001';
 
+    // Handle Escape key to close preview
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setPreviewFileId(null);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [setPreviewFileId]);
+
     useEffect(() => {
         if (!file || !token) return;
         
         const ext = file.extension.toLowerCase();
+        // Expanded list of text-like files
         const isText = [
             '.txt', '.md', '.json', '.ts', '.js', '.jsx', '.tsx', '.css', '.scss', '.html', '.xml', '.yaml', '.yml', '.sql', '.env', '.log', '.sh', '.py',
-            '.rs', '.go', '.c', '.cpp', '.h', '.java', '.kt', '.rb', '.php', '.pl', '.lua', '.toml', '.ini', '.conf', '.dockerfile', '.csv'
+            '.rs', '.go', '.c', '.cpp', '.h', '.java', '.kt', '.rb', '.php', '.pl', '.lua', '.toml', '.ini', '.conf', '.dockerfile', '.csv', '.svg'
         ].includes(ext);
         
         if (isText) {
@@ -35,8 +47,8 @@ export function FilePreviewModal() {
                 })
                 .then(text => {
                     // Limit text size for performance
-                    if (text.length > 50000) {
-                        setTextContent(text.substring(0, 50000) + "\n\n... (Content truncated for preview) ...");
+                    if (text.length > 100000) {
+                        setTextContent(text.substring(0, 100000) + `\n\n... (Content truncated for preview) ...`);
                     } else {
                         setTextContent(text);
                     }
@@ -57,20 +69,25 @@ export function FilePreviewModal() {
 
     const fileUrl = `${API_BASE}/api/files/${file.id}/content?token=${token}`;
     const ext = file.extension.toLowerCase();
-    const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.bmp'].includes(ext);
+    const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.avif'].includes(ext); // Removed .svg from image list to treat as text/code unless rendered as img? Actually SVG is fine as img.
     const isPdf = ext === '.pdf';
     const isAudio = ['.mp3', '.wav', '.ogg', '.flac', '.aac'].includes(ext);
     const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].includes(ext);
     const isMarkdown = ['.md', '.markdown'].includes(ext);
     const isCsv = ['.csv'].includes(ext);
     const isJson = ['.json'].includes(ext);
-    const isText = textContent !== null;
+    const isCodeOrText = textContent !== null;
 
+    // Helper for CSV parsing
     let parsedCsv: any[] = [];
+    let csvColumns: string[] = [];
     if (isCsv && textContent) {
-        parsedCsv = Papa.parse(textContent, { header: true, skipEmptyLines: true }).data;
+        const result = Papa.parse(textContent, { header: true, skipEmptyLines: true });
+        parsedCsv = result.data;
+        csvColumns = result.meta.fields || [];
     }
 
+    // Helper for JSON formatting
     let formattedJson = textContent;
     if (isJson && textContent) {
         try {
@@ -81,68 +98,77 @@ export function FilePreviewModal() {
     }
 
     return (
-        <Modal 
-            opened={!!previewFileId} 
-            onClose={() => setPreviewFileId(null)} 
-            title={
-                <Group justify="space-between" style={{ width: '100%' }} wrap="nowrap">
-                    <div style={{ flex: 1, minWidth: 0 }}>
+        <Paper 
+            style={{ 
+                height: 'calc(100vh - 100px)', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                overflow: 'hidden',
+                border: '1px solid var(--mantine-color-default-border)',
+                position: 'relative'
+            }} 
+            p="md" 
+            shadow="xs"
+        >
+            {/* Header */}
+            <Group justify="space-between" mb="md" style={{ flexShrink: 0 }}>
+                <Group gap="xs" style={{ flex: 1, minWidth: 0 }}>
+                    <ActionIcon variant="subtle" color="gray" onClick={() => setPreviewFileId(null)}>
+                        <IconArrowLeft size={20} />
+                    </ActionIcon>
+                    <div style={{ minWidth: 0 }}>
                         <Text fw={700} size="lg" truncate>{file.name}</Text>
-                        <Text size="xs" c="dimmed" style={{ wordBreak: 'break-all' }}>{file.path}</Text>
+                        <Text size="xs" c="dimmed" style={{ wordBreak: 'break-all' }} truncate>{file.path}</Text>
                     </div>
+                </Group>
+                <Group>
                     <Button 
                         leftSection={<IconExternalLink size={16} />} 
                         variant="light" 
-                        size="sm"
-                        onClick={() => {
-                            openFile(file.id);
-                            setPreviewFileId(null);
-                        }}
-                        style={{ flexShrink: 0, marginLeft: '1rem' }}
+                        size="xs"
+                        onClick={() => openFile(file.id)}
                     >
-                        Open in System
+                        Open System
                     </Button>
+                    <ActionIcon variant="subtle" color="gray" onClick={() => setPreviewFileId(null)}>
+                        <IconX size={20} />
+                    </ActionIcon>
                 </Group>
-            }
-            size="95vw"
-            padding="md"
-            styles={{ 
-                content: { maxHeight: '90vh', display: 'flex', flexDirection: 'column' },
-                body: { flex: 1, display: 'flex', flexDirection: 'column', minWidth: '60vw', maxWidth: '95vw', overflow: 'hidden', minHeight: '80vh' },
-                header: { width: '100%', flexShrink: 0 },
-                title: { flex: 1 }
-            }}
-        >
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            </Group>
+
+            {/* Content Area */}
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <LoadingOverlay visible={loading} overlayProps={{ radius: "sm", blur: 2 }} />
                 
                 {error && (
                     <Center h="100%">
-                        <Text c="red">Error loading preview: {error}</Text>
+                        <Stack align="center">
+                            <IconFileUnknown size={48} color="red" />
+                            <Text c="red">Error loading preview</Text>
+                            <Text size="sm" c="dimmed">{error}</Text>
+                        </Stack>
                     </Center>
                 )}
 
                 {!loading && !error && (
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+                    <div style={{ flex: 1, overflow: 'auto', height: '100%' }}>
                         {isImage && (
-                            <Center h="100%" style={{ overflow: 'auto' }}>
+                            <Center h="100%" style={{ minHeight: '300px' }}>
                                 <Image src={fileUrl} fit="contain" style={{ maxHeight: '100%', maxWidth: '100%' }} />
                             </Center>
                         )}
 
                         {isPdf && (
-                            <div style={{ flex: '1 1 0', minHeight: 0 }}>
-                                <iframe 
-                                    src={fileUrl} 
-                                    style={{ width: '100%', height: '100%', border: 'none' }} 
-                                    title="PDF Preview"
-                                />
-                            </div>
+                            <iframe 
+                                src={fileUrl} 
+                                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} 
+                                title="PDF Preview"
+                            />
                         )}
 
                         {isAudio && (
                             <Center h="100%" style={{ flexDirection: 'column', gap: 16 }}>
-                                <IconFileUnknown size={48} color="gray" /> {/* Using generic icon as placeholder */}
+                                <IconFileUnknown size={64} color="gray" />
                                 <Text size="lg">{file.name}</Text>
                                 <audio controls autoPlay src={fileUrl} style={{ width: '80%' }}>
                                     Your browser does not support the audio element.
@@ -151,58 +177,54 @@ export function FilePreviewModal() {
                         )}
 
                         {isVideo && (
-                            <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                            <Center h="100%">
                                 <video 
                                     controls 
                                     autoPlay 
                                     src={fileUrl} 
                                     style={{ maxHeight: '100%', maxWidth: '100%' }}
                                 >
-                                    Your browser does not support the audio element.
+                                    Your browser does not support the video element.
                                 </video>
-                            </div>
+                            </Center>
                         )}
 
-                        {isText && (
-                            <div style={{ flex: 1, overflow: 'auto', width: '100%' }}>
-                                <div style={{ padding: '4px' }}>
-                                    {isMarkdown ? (
-                                        <div style={{ padding: '1rem' }}>
-                                            <ReactMarkdown>{textContent}</ReactMarkdown>
-                                        </div>
-                                    ) : isCsv ? (
+                        {isCodeOrText && !isPdf && (
+                            <div style={{ padding: '0.5rem', height: '100%' }}>
+                                {isMarkdown ? (
+                                    <div className="markdown-body" style={{ maxWidth: '800px', margin: '0 auto' }}>
+                                        <ReactMarkdown>{textContent || ''}</ReactMarkdown>
+                                    </div>
+                                ) : isCsv ? (
+                                    <div style={{ overflow: 'auto', maxHeight: '100%' }}>
                                         <Table striped highlightOnHover withTableBorder withColumnBorders>
                                             <Table.Thead>
                                                 <Table.Tr>
-                                                    {parsedCsv.length > 0 && Object.keys(parsedCsv[0]).map((key) => (
-                                                        <Table.Th key={key}>{key}</Table.Th>
+                                                    {csvColumns.map((key) => (
+                                                        <Table.Th key={key} style={{ whiteSpace: 'nowrap' }}>{key}</Table.Th>
                                                     ))}
                                                 </Table.Tr>
                                             </Table.Thead>
                                             <Table.Tbody>
-                                                {parsedCsv.map((row, i) => (
+                                                {parsedCsv.map((row: any, i) => (
                                                     <Table.Tr key={i}>
-                                                        {Object.values(row).map((val: any, j) => (
-                                                            <Table.Td key={j}>{val}</Table.Td>
+                                                        {csvColumns.map((col) => (
+                                                            <Table.Td key={col} style={{ whiteSpace: 'nowrap' }}>{row[col]}</Table.Td>
                                                         ))}
                                                     </Table.Tr>
                                                 ))}
                                             </Table.Tbody>
                                         </Table>
-                                    ) : isJson ? (
-                                        <Code block style={{ whiteSpace: 'pre-wrap' }}>
-                                            {formattedJson}
-                                        </Code>
-                                    ) : (
-                                        <Code block style={{ whiteSpace: 'pre-wrap' }}>
-                                            {textContent}
-                                        </Code>
-                                    )}
-                                </div>
+                                    </div>
+                                ) : (
+                                    <Code block style={{ whiteSpace: 'pre-wrap', minHeight: '100%' }}>
+                                        {isJson ? formattedJson : textContent}
+                                    </Code>
+                                )}
                             </div>
                         )}
 
-                        {!isImage && !isPdf && !isText && !isAudio && !isVideo && (
+                        {!isImage && !isPdf && !isCodeOrText && !isAudio && !isVideo && (
                             <Center h="100%" style={{ flexDirection: 'column', gap: 16 }}>
                                 <IconFileUnknown size={64} color="gray" />
                                 <Text c="dimmed">No preview available for this file type.</Text>
@@ -212,6 +234,6 @@ export function FilePreviewModal() {
                     </div>
                 )}
             </div>
-        </Modal>
+        </Paper>
     );
 }

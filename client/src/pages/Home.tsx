@@ -1,21 +1,21 @@
-import { Group, Text, Loader, Alert, Stack, Badge, Table, ActionIcon, Button, Center, Checkbox } from '@mantine/core';
-import { IconFiles, IconAlertCircle, IconX, IconHammer } from '@tabler/icons-react';
+import { Group, Text, Loader, Alert, Stack, Badge, Table, ActionIcon, Button, Center, Checkbox, Tooltip } from '@mantine/core';
+import { IconFiles, IconAlertCircle, IconX, IconHammer, IconRefresh } from '@tabler/icons-react';
 import { useState, useRef, useMemo } from 'react';
 import { useAppStore } from '../store';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { FileRow } from '../components/DndComponents';
 import { useNavigate } from 'react-router-dom';
 import { translations } from '../i18n';
-import { FilePreviewModal } from '../components/FilePreviewModal';
+import { FilePreviewPanel } from '../components/FilePreviewPanel';
 
 export function HomePage() {
   console.log("[HomePage] Render cycle start");
   const { 
     files, isLoading, error, 
-    activeScopeIds, selectedTagId, searchQuery,
+    activeScopeIds, selectedTagIds, searchQuery,
     selectedFileIds, toggleFileSelection, setFileSelection, clearFileSelection,
-    removeTagFromFile, openFile, language,
-    searchMode, searchResults, isSearching, setPreviewFileId
+    removeTagFromFile, language, refreshAllScopes,
+    searchMode, searchResults, isSearching, setPreviewFileId, previewFileId
   } = useAppStore();
 
   const t = translations[language];
@@ -54,10 +54,16 @@ export function HomePage() {
           : file.name.toLowerCase().includes(lowerQuery);
 
       const matchesScope = activeScopeIds.length > 0 ? activeScopeIds.includes(file.scopeId) : false;
-      const matchesTag = selectedTagId ? file.tags.some((t: any) => t.id === selectedTagId) : true;
+      
+      // Multi-Tag Match (OR Logic: match ANY selected tag)
+      // If no tags selected, match all.
+      const matchesTag = selectedTagIds.length > 0 
+        ? file.tags.some((t: any) => selectedTagIds.includes(t.id)) 
+        : true;
+        
       return matchesSearch && matchesScope && matchesTag;
     });
-  }, [files, searchResults, searchQuery, searchMode, activeScopeIds, selectedTagId]);
+  }, [files, searchResults, searchQuery, searchMode, activeScopeIds, selectedTagIds]);
 
   const sortedFiles = useMemo(() => {
     console.log(`[HomePage] Sorting ${filteredFiles.length} files...`);
@@ -121,9 +127,13 @@ export function HomePage() {
       );
   }
 
+  // If a file is selected for preview, show the panel instead of the list
+  if (previewFileId) {
+      return <FilePreviewPanel />;
+  }
+
   return (
     <>
-        <FilePreviewModal />
         <Group mb="md" justify="space-between">
            <Group>
              <IconFiles size={20} />
@@ -131,6 +141,12 @@ export function HomePage() {
                 {t.files} ({filteredFiles.length} / {files.length})
              </Text>
              {selectedFileIds.length > 0 && <Badge color="violet">{t.selected.replace('{count}', selectedFileIds.length.toString())}</Badge>}
+             
+             <Tooltip label="Rescan active folders">
+                 <ActionIcon variant="light" color="gray" size="sm" onClick={() => refreshAllScopes()} loading={isLoading}>
+                    <IconRefresh size={14} />
+                 </ActionIcon>
+             </Tooltip>
            </Group>
            {(isLoading || isSearching) && <Loader size="xs" />}
         </Group>

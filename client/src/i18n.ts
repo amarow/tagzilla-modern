@@ -45,7 +45,15 @@ export const translations = {
     updated: "Changed",
     searchContent: "Search Content",
     searchModeFilename: "Filename",
-    searchModeContent: "Content"
+    searchModeContent: "Content",
+    changeLanguage: "Change Language",
+    toggleTheme: "Toggle Dark/Light Mode",
+    logout: "Logout",
+    security: "Security",
+    appearance: "Appearance",
+    currentPassword: "Current Password",
+    newPassword: "New Password",
+    update: "Update"
   },
   de: {
     searchPlaceholder: "Dateien suchen...",
@@ -93,6 +101,14 @@ export const translations = {
     updated: "Geändert",
     searchContent: "Inhaltssuche",
     searchModeFilename: "Dateiname",
-    searchModeContent: "Inhalt"
+    searchModeContent: "Inhalt",
+    changeLanguage: "Sprache wechseln",
+    toggleTheme: "Dunkel/Hell Modus umschalten",
+    logout: "Abmelden",
+    security: "Sicherheit",
+    appearance: "Erscheinungsbild",
+    currentPassword: "Aktuelles Passwort",
+    newPassword: "Neues Passwort",
+    update: "Aktualisieren"
   }
 };

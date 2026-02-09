@@ -1,6 +1,6 @@
-import { AppShell, Burger, Group, Text, ScrollArea, Button, Stack, Badge, ActionIcon, TextInput, NavLink, useMantineColorScheme, Card, PasswordInput, Container, Modal, ColorSwatch, Alert, Center, Checkbox, Loader } from '@mantine/core';
+import { AppShell, Burger, Group, Text, ScrollArea, Button, Stack, Badge, ActionIcon, TextInput, useMantineColorScheme, Card, PasswordInput, Container, Modal, ColorSwatch, Alert, Center, Checkbox, Loader, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconTags, IconPlus, IconX, IconSearch, IconSun, IconMoon, IconLogout, IconTrash, IconHammer, IconPencil, IconCheck } from '@tabler/icons-react';
+import { IconTags, IconPlus, IconX, IconSearch, IconSunHigh, IconMoonStars, IconLogout, IconTrash, IconSettings, IconPencil, IconCheck } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { useAppStore } from './store';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, type DragEndEvent } from '@dnd-kit/core';
@@ -28,10 +28,10 @@ export default function App() {
   const location = useLocation();
   const { 
     isAuthenticated, login, register, logout, error: storeError,
-    tags, isLoading, 
-    selectedTagId, searchQuery, selectedFileIds,
+    tags, isLoading, user,
+    selectedTagIds, searchQuery, selectedFileIds,
     init, addTagToFile, addTagToMultipleFiles, createTag, deleteTag, updateTag,
-    setTagFilter, setSearchQuery, language, toggleLanguage,
+    toggleTagFilter, selectSingleTag, setSearchQuery, language, toggleLanguage,
     searchMode, setSearchMode, performSearch, isSearching
   } = useAppStore();
   
@@ -206,11 +206,14 @@ export default function App() {
 
           
           <Group gap="sm">
+            <form action="." autoComplete="off" onSubmit={(e) => { e.preventDefault(); if (searchMode === 'content') performSearch(); }}>
             <TextInput 
                 placeholder={t.searchPlaceholder}
                 leftSection={<IconSearch size={16} />} 
                 style={{ width: 400 }}
                 value={searchQuery}
+                autoComplete="off"
+                name="tagzilla_global_search"
                 onChange={(e) => {
                     setSearchQuery(e.currentTarget.value);
                     if (location.pathname !== '/') navigate('/');
@@ -230,6 +233,7 @@ export default function App() {
                     )
                 }
             />
+            </form>
             <Checkbox
                 label={t.searchContent}
                 checked={searchMode === 'content'}
@@ -239,35 +243,45 @@ export default function App() {
           </Group>
 
           <Group>
-            <Button 
-                variant="default" 
-                size="xs" 
-                onClick={toggleLanguage} 
-                fw={700}
-                style={{ textTransform: 'uppercase' }}
-            >
-                {language}
-            </Button>
-            <ActionIcon 
-                onClick={() => navigate('/settings')} 
-                variant="default" 
-                size="lg" 
-                aria-label={t.settings}
-                title={t.settings}
-            >
-                <IconHammer size={18} />
-            </ActionIcon>
-            <ActionIcon onClick={() => toggleColorScheme()} variant="default" size="lg" aria-label="Toggle color scheme">
-                {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
-            </ActionIcon>
-            <ActionIcon onClick={logout} variant="default" size="lg" aria-label="Logout" title="Logout">
-                <IconLogout size={18} />
-            </ActionIcon>
+            <Tooltip label={t.settings}>
+                <ActionIcon 
+                    onClick={() => navigate('/settings')} 
+                    variant="default" 
+                    size="lg" 
+                    aria-label={t.settings}
+                >
+                    <IconSettings size={18} />
+                </ActionIcon>
+            </Tooltip>
+            
+            <Tooltip label={t.changeLanguage}>
+                <Button 
+                    variant="default" 
+                    size="xs" 
+                    onClick={toggleLanguage} 
+                    fw={700}
+                    style={{ textTransform: 'uppercase' }}
+                >
+                    {language}
+                </Button>
+            </Tooltip>
+
+            {user && (
+                <Text size="sm" fw={500} c="dimmed" mr="xs">
+                   {user.username}
+                </Text>
+            )}
+
+            <Tooltip label={t.logout}>
+                <ActionIcon onClick={logout} variant="default" size="lg" aria-label={t.logout}>
+                    <IconLogout size={18} />
+                </ActionIcon>
+            </Tooltip>
           </Group>
         </Group>
       </AppShell.Header>
 
-      <AppShell.Navbar p="md">
+      <AppShell.Navbar p="md" onClick={() => { if (location.pathname === '/settings') navigate('/'); }} style={{ cursor: location.pathname === '/settings' ? 'pointer' : 'default' }}>
         <Stack gap="xs">
           
           <Group justify="space-between" mb="xs">
@@ -278,48 +292,61 @@ export default function App() {
           </Group>
 
           <Stack gap={5}>
-            <TextInput 
-                placeholder={t.newTagName}
-                size="xs"
-                value={newTagInput}
-                onChange={(e) => setNewTagInput(e.currentTarget.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreateTag()}
-                rightSection={
-                    <ActionIcon variant="transparent" onClick={handleCreateTag} title={t.createTag}>
-                        <IconPlus size={16} />
-                    </ActionIcon>
-                }
-            />
+            <form onSubmit={(e) => { e.preventDefault(); handleCreateTag(); }} autoComplete="off">
+                <TextInput 
+                    placeholder={t.newTagName}
+                    size="xs"
+                    value={newTagInput}
+                    onChange={(e) => setNewTagInput(e.currentTarget.value)}
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-form-type="other"
+                    name="tagzilla_create_new_tag_field"
+                    id="tagzilla_create_new_tag_field"
+                    rightSection={
+                        <ActionIcon variant="transparent" onClick={handleCreateTag} title={t.createTag}>
+                            <IconPlus size={16} />
+                        </ActionIcon>
+                    }
+                />
+            </form>
           </Stack>
 
           <ScrollArea h="calc(100vh - 180px)" mt="sm">
             <Stack gap={4}>
-              <NavLink 
-                 label={t.files}
-                 leftSection={<IconTags size={16} />}
-                 active={!selectedTagId && location.pathname === '/'}
-                 onClick={() => { setTagFilter(null); navigate('/'); }}
-                 mb={4}
-               />
-              {tags.map(tag => (
+              {tags.map(tag => {
+                const isSelected = selectedTagIds.includes(tag.id);
+                return (
                 <TagItem 
                     key={tag.id} 
                     tag={tag} 
-                    isSelected={selectedTagId === tag.id}
-                    onClick={() => { setTagFilter(tag.id); navigate('/'); }}
+                    isSelected={isSelected}
+                    onClick={(e: React.MouseEvent) => { 
+                        e.stopPropagation();
+                        if (e.ctrlKey || e.metaKey) {
+                            toggleTagFilter(tag.id); 
+                        } else {
+                            if (selectedTagIds.length === 1 && selectedTagIds[0] === tag.id) {
+                                toggleTagFilter(tag.id); // Toggle off if it's the only one selected
+                            } else {
+                                selectSingleTag(tag.id);
+                            }
+                        }
+                        navigate('/'); 
+                    }}
                 >
                     <Group gap={0} wrap="nowrap">
                         <Button 
-                        variant={selectedTagId === tag.id ? "filled" : "subtle"}
-                        color={selectedTagId === tag.id ? (tag.color || "appleBlue") : "gray"}
+                        variant={isSelected ? "filled" : "subtle"}
+                        color={isSelected ? (tag.color || "appleBlue") : "gray"}
                         fullWidth 
                         justify="space-between" 
                         size="xs"
                         leftSection={
-                            selectedTagId !== tag.id && tag.color ? 
+                            !isSelected && tag.color ? 
                             <ColorSwatch color={tag.color} size={10} /> : null
                         }
-                        rightSection={<Badge size="xs" variant="transparent" color={selectedTagId === tag.id ? "white" : "gray"}>{tag._count?.files}</Badge>}
+                        rightSection={<Badge size="xs" variant="transparent" color={isSelected ? "white" : "gray"}>{tag._count?.files}</Badge>}
                         style={{ 
                             pointerEvents: 'none', 
                             borderTopRightRadius: 0, 
@@ -332,8 +359,8 @@ export default function App() {
                         </Button>
                         <ActionIcon 
                             size="30px" 
-                            variant={selectedTagId === tag.id ? "filled" : "subtle"}
-                            color={selectedTagId === tag.id ? (tag.color || "appleBlue") : "gray"}
+                            variant={isSelected ? "filled" : "subtle"}
+                            color={isSelected ? (tag.color || "appleBlue") : "gray"}
                             style={{ borderRadius: 0, borderRight: '1px solid rgba(0,0,0,0.1)' }}
                             onClick={(e) => openEditTagModal(tag, e)}
                             title={t.editTag}
@@ -342,8 +369,8 @@ export default function App() {
                         </ActionIcon>
                         <ActionIcon 
                             size="30px" 
-                            variant={selectedTagId === tag.id ? "filled" : "subtle"}
-                            color={selectedTagId === tag.id ? (tag.color || "appleBlue") : "gray"}
+                            variant={isSelected ? "filled" : "subtle"}
+                            color={isSelected ? (tag.color || "appleBlue") : "gray"}
                             style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
                             onClick={(e) => handleDeleteTag(e, tag)}
                             title={t.removeScope}
@@ -352,7 +379,7 @@ export default function App() {
                         </ActionIcon>
                     </Group>
                 </TagItem>
-              ))}
+              )})}
               {tags.length === 0 && <Text size="xs" c="dimmed">No tags created yet.</Text>}
             </Stack>
           </ScrollArea>
