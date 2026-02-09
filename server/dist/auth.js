@@ -29,7 +29,10 @@ exports.authService = {
 };
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    let token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    if (!token && req.query.token) {
+        token = req.query.token;
+    }
     if (!token)
         return res.sendStatus(401);
     jsonwebtoken_1.default.verify(token, SECRET_KEY, (err, user) => {

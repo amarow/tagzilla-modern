@@ -82,6 +82,10 @@ if (worker_threads_1.isMainThread) {
         content,
         tokenize='porter'
       );
+
+      CREATE TRIGGER IF NOT EXISTS FileHandle_AD AFTER DELETE ON FileHandle BEGIN
+        DELETE FROM FileContentIndex WHERE rowid = old.id;
+      END;
     `;
     exports.db.exec(schema);
     console.log(`Database initialized at ${dbPath}`);

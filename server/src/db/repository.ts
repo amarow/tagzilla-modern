@@ -77,6 +77,11 @@ export const fileRepository = {
       stmt.run(scopeId, filePath);
   },
   
+  getFileMinimal(scopeId: number, filePath: string) {
+      const stmt = db.prepare('SELECT id, updatedAt, size FROM FileHandle WHERE scopeId = ? AND path = ?');
+      return stmt.get(scopeId, filePath) as { id: number, updatedAt: string, size: number } | undefined;
+  },
+  
   // Get all files for a specific user (through user's scopes)
   async getAll(userId: number) {
       // Need a JOIN to check scope ownership

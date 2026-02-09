@@ -221,6 +221,35 @@ app.get('/api/files', auth_1.authenticateToken, async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
+app.get('/api/files/:id/content', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { id } = req.params;
+        const sql = `
+            SELECT f.path, f.mimeType 
+            FROM FileHandle f 
+            JOIN Scope s ON f.scopeId = s.id 
+            WHERE f.id = ? AND s.userId = ?
+        `;
+        const file = client_1.db.prepare(sql).get(id, userId);
+        if (!file) {
+            res.status(404).json({ error: 'File not found or access denied' });
+            return;
+        }
+        // Optional: Set Content-Type header explicitly if needed, though sendFile usually handles it.
+        // res.setHeader('Content-Type', file.mimeType);
+        res.sendFile(file.path, { dotfiles: 'allow' }, (err) => {
+            if (err) {
+                if (!res.headersSent) {
+                    res.status(500).json({ error: 'Failed to send file' });
+                }
+            }
+        });
+    }
+    catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
 app.post('/api/files/:id/open', auth_1.authenticateToken, async (req, res) => {
     try {
         // TODO: Ensure file belongs to user (scope check) - implicitly safe via local exec but good practice
@@ -232,23 +261,29 @@ app.post('/api/files/:id/open', auth_1.authenticateToken, async (req, res) => {
         }
         let command = '';
         const args = [];
-        // On Linux/Ubuntu, 'gio open' is often more reliable than 'xdg-open' for desktop apps
-        switch (process.platform) {
-            case 'darwin':
-                command = 'open';
-                args.push(file.path);
-                break;
-            case 'win32':
-                command = 'cmd';
-                args.push('/c', 'start', '""', file.path);
-                break;
-            default:
-                // Try gio open first (GNOME), fallback to xdg-open if needed?
-                // Actually xdg-open delegates to gio open, but let's be explicit if we can.
-                // For now, let's stick to xdg-open but ensure env is passed correctly.
-                command = 'xdg-open';
-                args.push(file.path);
-                break;
+        if (process.platform === 'linux' && file.extension === '.pdf') {
+            command = 'evince';
+            args.push(file.path);
+        }
+        else {
+            // On Linux/Ubuntu, 'gio open' is often more reliable than 'xdg-open' for desktop apps
+            switch (process.platform) {
+                case 'darwin':
+                    command = 'open';
+                    args.push(file.path);
+                    break;
+                case 'win32':
+                    command = 'cmd';
+                    args.push('/c', 'start', '""', file.path);
+                    break;
+                default:
+                    // Try gio open first (GNOME), fallback to xdg-open if needed?
+                    // Actually xdg-open delegates to gio open, but let's be explicit if we can.
+                    // For now, let's stick to xdg-open but ensure env is passed correctly.
+                    command = 'xdg-open';
+                    args.push(file.path);
+                    break;
+            }
         }
         console.log(`Attempting to open file: "${file.path}"`);
         // Aggressive environment sanitization: Only pass essential vars.
