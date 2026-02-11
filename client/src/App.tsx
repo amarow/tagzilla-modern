@@ -1,6 +1,6 @@
-import { AppShell, Burger, Group, Text, ScrollArea, Button, Stack, Badge, ActionIcon, TextInput, useMantineColorScheme, Card, PasswordInput, Container, Modal, ColorSwatch, Alert, Center, Checkbox, Loader, Tooltip } from '@mantine/core';
+import { AppShell, Burger, Group, Text, ScrollArea, Button, Stack, Badge, ActionIcon, TextInput, Card, PasswordInput, Container, Modal, ColorSwatch, Alert, Loader, Tooltip, Center } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconTags, IconPlus, IconX, IconSearch, IconSunHigh, IconMoonStars, IconLogout, IconTrash, IconSettings, IconPencil, IconCheck } from '@tabler/icons-react';
+import { IconTags, IconPlus, IconX, IconSearch, IconLogout, IconTrash, IconSettings, IconPencil, IconCheck } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { useAppStore } from './store';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, type DragEndEvent } from '@dnd-kit/core';
@@ -23,16 +23,15 @@ const TAG_COLORS = [
 
 export default function App() {
   const [opened, { toggle }] = useDisclosure();
-  const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const navigate = useNavigate();
   const location = useLocation();
   const { 
     isAuthenticated, login, register, logout, error: storeError,
     tags, isLoading, user,
-    selectedTagIds, searchQuery, selectedFileIds,
+    selectedTagIds, searchCriteria, selectedFileIds,
     init, addTagToFile, addTagToMultipleFiles, createTag, deleteTag, updateTag,
-    toggleTagFilter, selectSingleTag, setSearchQuery, language, toggleLanguage,
-    searchMode, setSearchMode, performSearch, isSearching
+    toggleTagFilter, selectSingleTag, setSearchCriteria, clearSearch, language, toggleLanguage,
+    performSearch, isSearching
   } = useAppStore();
   
   const t = translations[language];
@@ -205,41 +204,71 @@ export default function App() {
           </Group>
 
           
-          <Group gap="sm">
-            <form action="." autoComplete="off" onSubmit={(e) => { e.preventDefault(); if (searchMode === 'content') performSearch(); }}>
-            <TextInput 
-                placeholder={t.searchPlaceholder}
-                leftSection={<IconSearch size={16} />} 
-                style={{ width: 400 }}
-                value={searchQuery}
-                autoComplete="off"
-                name="tagzilla_global_search"
-                onChange={(e) => {
-                    setSearchQuery(e.currentTarget.value);
-                    if (location.pathname !== '/') navigate('/');
-                }}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter' && searchMode === 'content') {
-                        performSearch();
-                    }
-                }}
-                rightSection={
-                    isSearching ? <Loader size="xs" /> : (
-                        searchQuery ? (
-                            <ActionIcon variant="transparent" c="dimmed" onClick={() => setSearchQuery('')}>
-                                <IconX size={14} />
-                            </ActionIcon>
-                        ) : null
-                    )
-                }
-            />
+          <Group gap="xs">
+            <form action="." autoComplete="off" onSubmit={(e) => { e.preventDefault(); performSearch(); }}>
+                <Group gap={8}>
+                    <TextInput 
+                        placeholder={t.searchModeDirectory || 'Verzeichnis'}
+                        leftSection={<IconSearch size={14} />} 
+                        style={{ width: 200 }}
+                        value={searchCriteria.directory}
+                        size="xs"
+                        autoComplete="off"
+                        onChange={(e) => {
+                            setSearchCriteria({ directory: e.currentTarget.value });
+                            if (location.pathname !== '/') navigate('/');
+                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && performSearch()}
+                        rightSection={
+                            searchCriteria.directory ? (
+                                <ActionIcon variant="transparent" c="dimmed" size="xs" onClick={() => setSearchCriteria({ directory: '' })}>
+                                    <IconX size={12} />
+                                </ActionIcon>
+                            ) : null
+                        }
+                    />
+                    <TextInput 
+                        placeholder={t.name || 'Dateiname'}
+                        leftSection={<IconSearch size={14} />} 
+                        style={{ width: 200 }}
+                        value={searchCriteria.filename}
+                        size="xs"
+                        autoComplete="off"
+                        onChange={(e) => {
+                            setSearchCriteria({ filename: e.currentTarget.value });
+                            if (location.pathname !== '/') navigate('/');
+                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && performSearch()}
+                        rightSection={
+                            searchCriteria.filename ? (
+                                <ActionIcon variant="transparent" c="dimmed" size="xs" onClick={() => setSearchCriteria({ filename: '' })}>
+                                    <IconX size={12} />
+                                </ActionIcon>
+                            ) : null
+                        }
+                    />
+                    <TextInput 
+                        placeholder={t.searchContent || 'Inhalt'}
+                        leftSection={<IconSearch size={14} />} 
+                        style={{ width: 250 }}
+                        value={searchCriteria.content}
+                        size="xs"
+                        autoComplete="off"
+                        onChange={(e) => {
+                            setSearchCriteria({ content: e.currentTarget.value });
+                            if (location.pathname !== '/') navigate('/');
+                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && performSearch()}
+                        rightSection={
+                            searchCriteria.content ? (
+                                <ActionIcon variant="transparent" c="dimmed" size="xs" onClick={() => setSearchCriteria({ content: '' })}>
+                                    <IconX size={12} />
+                                </ActionIcon>
+                            ) : null
+                        }
+                    />
+                </Group>
             </form>
-            <Checkbox
-                label={t.searchContent}
-                checked={searchMode === 'content'}
-                onChange={(e) => setSearchMode(e.currentTarget.checked ? 'content' : 'filename')}
-                size="xs"
-            />
           </Group>
 
           <Group>
@@ -369,6 +398,7 @@ export default function App() {
                             style={{ borderRadius: 0, borderRight: '1px solid rgba(0,0,0,0.1)' }}
                             onClick={(e) => openEditTagModal(tag, e)}
                             title={t.editTag}
+                            disabled={(tag.isEditable as any) === 0}
                         >
                             <IconPencil size={14} />
                         </ActionIcon>
@@ -378,7 +408,8 @@ export default function App() {
                             color={isSelected ? (tag.color || "appleBlue") : "gray"}
                             style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
                             onClick={(e) => handleDeleteTag(e, tag)}
-                            title={t.removeScope}
+                            title={t.deleteTag}
+                            disabled={(tag.isEditable as any) === 0}
                         >
                             <IconTrash size={14} />
                         </ActionIcon>

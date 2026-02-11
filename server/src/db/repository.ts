@@ -34,47 +34,67 @@ export const scopeRepository = {
 
 export const fileRepository = {
   async upsertFile(scopeId: number, filePath: string, stats: { size: number; ctime: Date; mtime: Date }) {
-    const filename = path.basename(filePath);
-    const extension = path.extname(filePath).toLowerCase();
-    
-    // Simple naive mime mapping
-    let mimeType = 'application/octet-stream';
-    if (extension === '.txt') mimeType = 'text/plain';
-    if (extension === '.pdf') mimeType = 'application/pdf';
-    if (extension === '.jpg' || extension === '.jpeg') mimeType = 'image/jpeg';
-    if (extension === '.png') mimeType = 'image/png';
-    if (extension === '.avif') mimeType = 'image/avif';
-    if (extension === '.docx') mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-    if (extension === '.avi') mimeType = 'video/x-msvideo';
-    if (extension === '.mp4') mimeType = 'video/mp4';
-    if (extension === '.mkv') mimeType = 'video/x-matroska';
-    if (extension === '.mov') mimeType = 'video/quicktime';
+    const runTransaction = db.transaction(() => {
+      const filename = path.basename(filePath);
+      const extension = path.extname(filePath).toLowerCase();
+      
+      // Simple naive mime mapping
+      let mimeType = 'application/octet-stream';
+      if (['.txt', '.md', '.rtf', '.csv', '.json', '.xml', '.log'].includes(extension)) mimeType = 'text/plain';
+      if (['.pdf'].includes(extension)) mimeType = 'application/pdf';
+      if (['.docx', '.doc'].includes(extension)) mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      if (['.zip', '.7z', '.rar', '.tar', '.gz'].includes(extension)) mimeType = 'application/zip'; // Treat all archives as zip/archive for now
+      if (['.jpg', '.jpeg', '.png', '.avif', '.gif', '.webp', '.bmp', '.tiff', '.heic'].includes(extension)) mimeType = 'image';
+      if (['.avi', '.mp4', '.mkv', '.mov', '.webm', '.wmv', '.flv', '.m4v', '.3gp'].includes(extension)) mimeType = 'video';
+      if (['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma'].includes(extension)) mimeType = 'audio';
 
-    // Using UPSERT syntax (INSERT OR REPLACE / ON CONFLICT)
-    // SQLite supports ON CONFLICT(scopeId, path) DO UPDATE
-    // Use mtime (modification time) from file stats for updatedAt
-    // We use RETURNING id to get the correct ID even if no update happens or cached
-    const sql = `
-      INSERT INTO FileHandle (scopeId, path, name, extension, size, mimeType, updatedAt)
-      VALUES (@scopeId, @path, @name, @extension, @size, @mimeType, @mtime)
-      ON CONFLICT(scopeId, path) DO UPDATE SET
-        size = excluded.size,
-        updatedAt = excluded.updatedAt
-      RETURNING id
-    `;
-    
-    const stmt = db.prepare(sql);
-    const row = stmt.get({
-        scopeId,
-        path: filePath,
-        name: filename,
-        extension,
-        size: stats.size,
-        mimeType,
-        mtime: stats.mtime.toISOString()
-    }) as { id: number };
+      // Using UPSERT syntax (INSERT OR REPLACE / ON CONFLICT)
+      const sql = `
+        INSERT INTO FileHandle (scopeId, path, name, extension, size, mimeType, updatedAt)
+        VALUES (@scopeId, @path, @name, @extension, @size, @mimeType, @mtime)
+        ON CONFLICT(scopeId, path) DO UPDATE SET
+          size = excluded.size,
+          updatedAt = excluded.updatedAt
+        RETURNING id
+      `;
+      
+      const stmt = db.prepare(sql);
+      const row = stmt.get({
+          scopeId,
+          path: filePath,
+          name: filename,
+          extension,
+          size: stats.size,
+          mimeType,
+          mtime: stats.mtime.toISOString()
+      }) as { id: number };
 
-    return row.id;
+      const fileId = row.id;
+
+      // Assign predefined tags
+      const scope = db.prepare('SELECT userId FROM Scope WHERE id = ?').get(scopeId) as { userId: number };
+      if (scope) {
+        const userId = scope.userId;
+        let tagName: string | null = null;
+        if (mimeType.startsWith('image')) tagName = 'Bilder';
+        else if (mimeType.startsWith('audio')) tagName = 'Musik';
+        else if (mimeType.startsWith('video')) tagName = 'Video';
+        else if (mimeType === 'application/zip') tagName = 'Archive';
+        else if (mimeType.startsWith('text') || mimeType === 'application/pdf' || mimeType.includes('document')) tagName = 'Text';
+        else tagName = 'Rest'; // Default to Rest if no other tag matches
+
+        if (tagName) {
+          const tag = db.prepare('SELECT id FROM Tag WHERE userId = ? AND name = ?').get(userId, tagName) as { id: number };
+          if (tag) {
+            db.prepare('INSERT OR IGNORE INTO _FileHandleToTag (A, B) VALUES (?, ?)').run(fileId, tag.id);
+          }
+        }
+      }
+
+      return fileId;
+    });
+
+    return runTransaction();
   },
 
   async removeFile(scopeId: number, filePath: string) {
@@ -83,8 +103,13 @@ export const fileRepository = {
   },
   
   getFileMinimal(scopeId: number, filePath: string) {
-      const stmt = db.prepare('SELECT id, updatedAt, size FROM FileHandle WHERE scopeId = ? AND path = ?');
-      return stmt.get(scopeId, filePath) as { id: number, updatedAt: string, size: number } | undefined;
+      const stmt = db.prepare(`
+        SELECT f.id, f.updatedAt, f.size, 
+               EXISTS(SELECT 1 FROM FileContentIndex WHERE rowid = f.id) as hasContent
+        FROM FileHandle f 
+        WHERE f.scopeId = ? AND f.path = ?
+      `);
+      return stmt.get(scopeId, filePath) as { id: number, updatedAt: string, size: number, hasContent: number } | undefined;
   },
   
   // Get all files for a specific user (through user's scopes)
@@ -92,7 +117,7 @@ export const fileRepository = {
       // Need a JOIN to check scope ownership
       const sql = `
         SELECT f.*, 
-               json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color)) as tags_json
+               json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color, 'isEditable', t.isEditable)) as tags_json
         FROM FileHandle f
         JOIN Scope s ON f.scopeId = s.id
         LEFT JOIN _FileHandleToTag ft ON f.id = ft.A
@@ -311,7 +336,7 @@ export const fileRepository = {
   getFileWithTags(fileId: number) {
       const sql = `
         SELECT f.*, 
-               json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color)) as tags_json
+               json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color, 'isEditable', t.isEditable)) as tags_json
         FROM FileHandle f
         LEFT JOIN _FileHandleToTag ft ON f.id = ft.A
         LEFT JOIN Tag t ON ft.B = t.id
@@ -324,6 +349,74 @@ export const fileRepository = {
           ...row,
           tags: JSON.parse(row.tags_json).filter((t: any) => t.id !== null)
       };
+  },
+
+  async applySystemTagsToAllFiles() {
+      console.log('Running system tag update on all files...');
+      const runTransaction = db.transaction(() => {
+          let totalChanges = 0;
+          
+          // Define mappings
+          const mappings = [
+              { tagName: 'Text', exts: ['.txt', '.md', '.rtf', '.csv', '.json', '.xml', '.log', '.pdf', '.docx', '.doc', '.odt'] },
+              { tagName: 'Bilder', exts: ['.jpg', '.jpeg', '.png', '.avif', '.gif', '.webp', '.bmp', '.tiff', '.heic'] },
+              { tagName: 'Video', exts: ['.avi', '.mp4', '.mkv', '.mov', '.webm', '.wmv', '.flv', '.m4v', '.3gp'] },
+              { tagName: 'Musik', exts: ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma'] },
+              { tagName: 'Archive', exts: ['.zip', '.7z', '.rar', '.tar', '.gz'] }
+          ];
+
+          for (const map of mappings) {
+              // 1. Get all file extensions as a quoted list for SQL
+              const placeholders = map.exts.map(() => '?').join(',');
+              
+              // 2. Insert links
+              // We join FileHandle -> Scope -> Tag (by userId and Name)
+              const sql = `
+                  INSERT OR IGNORE INTO _FileHandleToTag (A, B)
+                  SELECT f.id, t.id
+                  FROM FileHandle f
+                  JOIN Scope s ON f.scopeId = s.id
+                  JOIN Tag t ON s.userId = t.userId
+                  WHERE t.name = ?
+                  AND f.extension IN (${placeholders})
+              `;
+              
+              const stmt = db.prepare(sql);
+              const info = stmt.run(map.tagName, ...map.exts);
+              totalChanges += info.changes;
+          }
+
+          // 3. Apply 'Rest' tag to files that have NO tags (or effectively, files that didn't match above categories)
+          // We can't strictly check "no tags" because user might have custom tags.
+          // But the requirement is: "Rest ... unter dem alle Files getagt sind, die nicht Bilder, die nicht Musik, die nicht Text und nicht Video sind"
+          // So we should find files that do NOT have any of the SYSTEM tags (Bilder, Musik, Text, Video) and assign Rest.
+          
+          const systemTagNames = ['Bilder', 'Musik', 'Text', 'Video', 'Archive'];
+          const placeholders = systemTagNames.map(() => '?').join(',');
+
+          const sqlRest = `
+              INSERT OR IGNORE INTO _FileHandleToTag (A, B)
+              SELECT f.id, tRest.id
+              FROM FileHandle f
+              JOIN Scope s ON f.scopeId = s.id
+              JOIN Tag tRest ON s.userId = tRest.userId AND tRest.name = 'Rest'
+              WHERE NOT EXISTS (
+                  SELECT 1 
+                  FROM _FileHandleToTag ft
+                  JOIN Tag t ON ft.B = t.id
+                  WHERE ft.A = f.id
+                  AND t.name IN (${placeholders})
+              )
+          `;
+          
+          const stmtRest = db.prepare(sqlRest);
+          const infoRest = stmtRest.run(...systemTagNames);
+          totalChanges += infoRest.changes;
+
+          return totalChanges;
+      });
+      const changes = runTransaction();
+      console.log(`System tags applied (including 'Rest'). New links created: ${changes}`);
   }
 };
 
@@ -346,6 +439,7 @@ export const tagRepository = {
         id: r.id,
         name: r.name,
         color: r.color,
+        isEditable: r.isEditable,
         userId: r.userId,
         _count: { files: r.fileCount }
     }));
@@ -358,6 +452,11 @@ export const tagRepository = {
   },
 
   async update(userId: number, id: number, updates: { name?: string, color?: string }) {
+    const tag = db.prepare('SELECT isEditable FROM Tag WHERE id = ? AND userId = ?').get(id, userId) as { isEditable: number };
+    if (tag && tag.isEditable === 0) {
+      throw new Error('Cannot edit a predefined tag.');
+    }
+
     const { name, color } = updates;
     const fields = [];
     const values = [];
@@ -385,6 +484,10 @@ export const tagRepository = {
   },
 
   async delete(userId: number, id: number) {
+    const tag = db.prepare('SELECT isEditable FROM Tag WHERE id = ? AND userId = ?').get(id, userId) as { isEditable: number };
+    if (tag && tag.isEditable === 0) {
+      throw new Error('Cannot delete a predefined tag.');
+    }
     const stmt = db.prepare('DELETE FROM Tag WHERE id = ? AND userId = ?');
     stmt.run(id, userId);
   }
@@ -413,35 +516,40 @@ export const searchRepository = {
     stmt.run(fileId, content);
   },
 
-  async search(userId: number, query: string, mode: 'filename' | 'content' = 'filename') {
-    let rows;
-    if (mode === 'content') {
-      const terms = query.trim().split(/\s+/).filter(t => t.length > 0);
-      if (terms.length === 0) return [];
-      
-      // Construct FTS query: "term1"* AND "term2"*
-      const ftsQuery = terms.map(t => `"${t.replace(/"/g, '""')}"*`).join(' AND ');
+  async search(userId: number, criteria: { filename?: string, content?: string, directory?: string }) {
+    const conditions: string[] = ['s.userId = ?'];
+    const params: any[] = [userId];
+    let joinContent = false;
+    let ftsQuery = '';
 
-      const sql = `
+    // Handle Content Search (FTS)
+    if (criteria.content && criteria.content.trim()) {
+      const terms = criteria.content.trim().split(/\s+/).filter(t => t.length > 0);
+      if (terms.length > 0) {
+        ftsQuery = terms.map(t => `"${t.replace(/"/g, '""')}"*`).join(' AND ');
+        joinContent = true;
+        conditions.push('fts.content MATCH ?');
+        params.push(ftsQuery);
+      }
+    }
+
+    // Handle Filename Search
+    if (criteria.filename && criteria.filename.trim()) {
+        conditions.push('f.name LIKE ?');
+        params.push(`%${criteria.filename.trim()}%`);
+    }
+
+    // Handle Directory Search
+    if (criteria.directory && criteria.directory.trim()) {
+        conditions.push("(f.path LIKE '%/' || ? || '/%' OR f.path LIKE '%\\' || ? || '\\%')");
+        params.push(criteria.directory.trim());
+        params.push(criteria.directory.trim());
+    }
+    
+    // Construct Query
+    const sql = `
         SELECT f.*,
-               snippet(FileContentIndex, 0, '<b>', '</b>', '...', 64) as snippet,
-               (
-                   SELECT json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color))
-                   FROM _FileHandleToTag ft
-                   JOIN Tag t ON ft.B = t.id
-                   WHERE ft.A = f.id
-               ) as tags_json
-        FROM FileContentIndex fts
-        JOIN FileHandle f ON f.id = fts.rowid
-        JOIN Scope s ON f.scopeId = s.id
-        WHERE s.userId = ? AND fts.content MATCH ?
-        ORDER BY rank
-        LIMIT 50
-      `;
-      rows = db.prepare(sql).all(userId, ftsQuery);
-    } else {
-      const sql = `
-        SELECT f.*,
+               ${joinContent ? "snippet(FileContentIndex, 0, '<b>', '</b>', '...', 64) as snippet," : ""}
                (
                    SELECT json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color))
                    FROM _FileHandleToTag ft
@@ -450,12 +558,13 @@ export const searchRepository = {
                ) as tags_json
         FROM FileHandle f
         JOIN Scope s ON f.scopeId = s.id
-        WHERE s.userId = ? AND f.name LIKE ?
-        ORDER BY f.updatedAt DESC
-        LIMIT 50
-      `;
-      rows = db.prepare(sql).all(userId, `%${query}%`);
-    }
+        ${joinContent ? "JOIN FileContentIndex fts ON f.id = fts.rowid" : ""}
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY ${joinContent ? "rank" : "f.updatedAt DESC"}
+        LIMIT 500
+    `;
+
+    const rows = db.prepare(sql).all(...params);
 
     return rows.map((row: any) => ({
         ...row,

@@ -17,6 +17,7 @@ interface Tag {
   id: number;
   name: string;
   color: string | null;
+  isEditable?: boolean; // Optional because legacy data might not have it immediately
   _count?: {
     files: number;
   };
@@ -49,8 +50,11 @@ interface AppState {
   // Filter State
   activeScopeIds: number[];
   selectedTagIds: number[];
-  searchQuery: string;
-  searchMode: 'filename' | 'content';
+  searchCriteria: {
+      filename: string;
+      content: string;
+      directory: string;
+  };
   searchResults: FileHandle[];
   isSearching: boolean;
   previewFileId: number | null;
@@ -95,9 +99,10 @@ interface AppState {
   toggleTagFilter: (id: number) => void;
   selectSingleTag: (id: number) => void;
   clearTagFilters: () => void;
-  setSearchQuery: (query: string) => void;
-  setSearchMode: (mode: 'filename' | 'content') => void;
+  
+  setSearchCriteria: (criteria: Partial<{ filename: string; content: string; directory: string }>) => void;
   performSearch: () => Promise<void>;
+  clearSearch: () => void;
 
   // Selection Actions
   toggleFileSelection: (fileId: number) => void;
@@ -106,6 +111,9 @@ interface AppState {
 }
 
 const API_BASE = 'http://localhost:3001';
+
+// Debounce timer for search
+let searchTimeout: any = null;
 
 // Helper for authorized fetch
 const authFetch = async (url: string, token: string | null, options: RequestInit = {}) => {
@@ -130,7 +138,7 @@ const savePreferences = async (state: AppState) => {
   const prefs = {
     activeScopeIds: state.activeScopeIds,
     selectedTagIds: state.selectedTagIds,
-    searchQuery: state.searchQuery
+    searchCriteria: state.searchCriteria
   };
   try {
       await authFetch(`${API_BASE}/api/preferences`, state.token, {
@@ -157,8 +165,7 @@ export const useAppStore = create<AppState>()(
       
       activeScopeIds: [],
       selectedTagIds: [],
-      searchQuery: '',
-      searchMode: 'filename',
+      searchCriteria: { filename: '', content: '', directory: '' },
       searchResults: [],
       isSearching: false,
       previewFileId: null,
@@ -239,10 +246,18 @@ export const useAppStore = create<AppState>()(
               const res = await authFetch(`${API_BASE}/api/preferences`, token);
               const prefs = await res.json();
               if (prefs) {
+                  // Handle legacy prefs migration if needed
+                  let criteria = { filename: '', content: '', directory: '' };
+                  if (prefs.searchQuery && typeof prefs.searchQuery === 'string') {
+                      criteria.filename = prefs.searchQuery;
+                  } else if (prefs.searchCriteria) {
+                      criteria = { ...criteria, ...prefs.searchCriteria };
+                  }
+
                   set({ 
                       activeScopeIds: prefs.activeScopeIds || [],
                       selectedTagIds: prefs.selectedTagIds || (prefs.selectedTagId ? [prefs.selectedTagId] : []),
-                      searchQuery: prefs.searchQuery || ''
+                      searchCriteria: criteria
                   });
               }
           } catch (e) {
@@ -287,28 +302,56 @@ export const useAppStore = create<AppState>()(
           savePreferences(get());
       },
 
-      setSearchQuery: (query) => {
-          set({ searchQuery: query });
+      setSearchCriteria: (updates) => {
+          const newCriteria = { ...get().searchCriteria, ...updates };
+          set({ searchCriteria: newCriteria });
+          savePreferences(get());
+
+          if (searchTimeout) clearTimeout(searchTimeout);
+
+          // Auto-trigger if criteria is substantial
+          const hasInput = (newCriteria.filename.length >= 3) || 
+                           (newCriteria.content.length >= 3) || 
+                           (newCriteria.directory.length >= 3);
+          
+          // Or if we cleared inputs (to reset search)
+          const isEmpty = !newCriteria.filename && !newCriteria.content && !newCriteria.directory;
+
+          if (hasInput || isEmpty) {
+              searchTimeout = setTimeout(() => {
+                  get().performSearch();
+              }, 500);
+          }
+      },
+      
+      clearSearch: () => {
+          set({ 
+              searchCriteria: { filename: '', content: '', directory: '' }, 
+              searchResults: [],
+              isSearching: false 
+          });
           savePreferences(get());
       },
 
-      setSearchMode: (mode) => {
-          set({ searchMode: mode });
-          if (get().searchQuery && mode === 'content') {
-               get().performSearch();
-          }
-      },
-
       performSearch: async () => {
-          const { token, searchMode, searchQuery } = get();
-          if (!searchQuery.trim()) {
+          if (searchTimeout) clearTimeout(searchTimeout);
+          
+          const { token, searchCriteria } = get();
+          const { filename, content, directory } = searchCriteria;
+
+          if (!filename.trim() && !content.trim() && !directory.trim()) {
               set({ searchResults: [], isSearching: false });
               return;
           }
           
           set({ isSearching: true, error: null });
           try {
-              const res = await authFetch(`${API_BASE}/api/search?q=${encodeURIComponent(searchQuery)}&mode=${searchMode}`, token);
+              const params = new URLSearchParams();
+              if (filename) params.append('filename', filename);
+              if (content) params.append('content', content);
+              if (directory) params.append('directory', directory);
+
+              const res = await authFetch(`${API_BASE}/api/search?${params.toString()}`, token);
               if (res.ok) {
                   const data = await res.json();
                   set({ searchResults: data, isSearching: false });

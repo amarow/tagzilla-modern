@@ -3,6 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import { isMainThread } from 'worker_threads';
 
+import { createDefaultUserAndTags } from './user';
+
 // Ensure the directory exists and use absolute path
 let dbPath = process.env.DATABASE_URL?.replace('file:', '') || './dev.db';
 if (!path.isAbsolute(dbPath)) {
@@ -43,6 +45,7 @@ if (isMainThread) {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         color TEXT,
+        isEditable BOOLEAN NOT NULL DEFAULT 1,
         userId INTEGER NOT NULL,
         FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE,
         UNIQUE(userId, name)
@@ -88,4 +91,14 @@ if (isMainThread) {
     `;
     db.exec(schema);
     console.log(`Database initialized at ${dbPath}`);
+
+    // Migration: Add isEditable column if not exists
+    const tagColumns = db.pragma('table_info(Tag)') as any[];
+    const hasIsEditable = tagColumns.some(col => col.name === 'isEditable');
+    if (!hasIsEditable) {
+        db.prepare("ALTER TABLE Tag ADD COLUMN isEditable BOOLEAN NOT NULL DEFAULT 1").run();
+        console.log("Migration: Added 'isEditable' column to Tag table");
+    }
+
+    createDefaultUserAndTags();
 }

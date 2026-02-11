@@ -38,6 +38,8 @@ export function FileViewer({ url, filename, extension, onOpenExternally }: FileV
         '.rs', '.go', '.c', '.cpp', '.h', '.java', '.kt', '.rb', '.php', '.pl', '.lua', '.toml', '.ini', '.conf', '.dockerfile', '.csv', '.svg'
     ].includes(ext);
 
+    const isDocx = ext === '.docx';
+    const isOdt = ext === '.odt';
     const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.avif', '.heic'].includes(ext);
     const isPdf = ext === '.pdf';
     const isAudio = ['.mp3', '.wav', '.ogg', '.flac', '.aac'].includes(ext);
@@ -47,10 +49,15 @@ export function FileViewer({ url, filename, extension, onOpenExternally }: FileV
     const isJson = ['.json'].includes(ext);
 
     useEffect(() => {
-        if (isText) {
+        if (isText || isDocx || isOdt) {
             setLoading(true);
             setError(null);
-            fetch(url)
+
+            const fetchUrl = (isDocx || isOdt) 
+                ? url.replace('/content?', '/text-content?')
+                : url;
+
+            fetch(fetchUrl)
                 .then(res => {
                     if (!res.ok) throw new Error("Failed to load content");
                     return res.text();
@@ -74,7 +81,7 @@ export function FileViewer({ url, filename, extension, onOpenExternally }: FileV
             setLoading(false);
             setError(null);
         }
-    }, [url, isText]);
+    }, [url, isText, isDocx, isOdt]);
 
     // Helper for CSV parsing
     let parsedCsv: any[] = [];
@@ -151,8 +158,19 @@ export function FileViewer({ url, filename, extension, onOpenExternally }: FileV
 
             {textContent !== null && !isPdf && (
                 <div style={{ padding: '0.5rem', height: '100%' }}>
-                    {isMarkdown ? (
-                        <div className="markdown-body" style={{ maxWidth: '800px', margin: '0 auto' }}>
+                    {isMarkdown || isDocx || isOdt ? (
+                        <div 
+                            className="markdown-body" 
+                            style={{ 
+                                maxWidth: '800px', 
+                                margin: '2rem auto', 
+                                padding: '3rem',
+                                boxShadow: 'var(--mantine-shadow-md)',
+                                borderRadius: 'var(--mantine-radius-sm)',
+                                border: '1px solid var(--mantine-color-gray-3)',
+                                minHeight: 'calc(100% - 4rem)'
+                            }}
+                        >
                             <ReactMarkdown>{textContent || ''}</ReactMarkdown>
                         </div>
                     ) : isCsv ? (

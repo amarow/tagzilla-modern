@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { Request, Response, NextFunction } from 'express';
 import { db } from './db/client';
+import { ensureSystemTags } from './db/user';
 
 const SECRET_KEY = process.env.JWT_SECRET || 'super-secret-key-change-me';
 
@@ -17,7 +18,12 @@ export const authService = {
     const hashedPassword = await bcrypt.hash(password, 10);
     const stmt = db.prepare('INSERT INTO User (username, password) VALUES (?, ?)');
     const info = stmt.run(username, hashedPassword);
-    return { id: Number(info.lastInsertRowid), username };
+    const userId = Number(info.lastInsertRowid);
+    
+    // Create system tags for new user
+    ensureSystemTags(userId);
+    
+    return { id: userId, username };
   },
 
   async login(username: string, password: string) {

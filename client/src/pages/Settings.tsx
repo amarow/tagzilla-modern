@@ -4,7 +4,7 @@ import {
     useMantineColorScheme, SegmentedControl, PasswordInput
 } from '@mantine/core';
 import { 
-    IconFolder, IconPlus, IconRefresh, IconTrash, IconArrowUp, IconCheck, IconKey,
+    IconFolder, IconPlus, IconRefresh, IconTrash, IconArrowUp, IconCheck,
     IconSunHigh, IconMoonStars, IconArrowLeft
 } from '@tabler/icons-react';
 import { useState, useEffect } from 'react';
@@ -21,7 +21,7 @@ export function SettingsPage() {
 
     const t = translations[language];
     const navigate = useNavigate();
-    const { colorScheme, toggleColorScheme, setColorScheme } = useMantineColorScheme();
+    const { colorScheme, setColorScheme } = useMantineColorScheme();
 
     // Password Change State
     const [currentPassword, setCurrentPassword] = useState('');

@@ -1,4 +1,4 @@
-import { Group, Text, Loader, Alert, Stack, Badge, Table, ActionIcon, Button, Center, Checkbox, Tooltip } from '@mantine/core';
+import { Group, Text, Loader, Alert, Stack, Badge, Table, ActionIcon, Button, Center, Checkbox, Tooltip, LoadingOverlay } from '@mantine/core';
 import { IconFiles, IconAlertCircle, IconX, IconHammer, IconRefresh } from '@tabler/icons-react';
 import { useState, useRef, useMemo } from 'react';
 import { useAppStore } from '../store';
@@ -12,10 +12,11 @@ export function HomePage() {
   console.log("[HomePage] Render cycle start");
   const { 
     files, isLoading, error, 
-    activeScopeIds, selectedTagIds, searchQuery,
+    activeScopeIds, selectedTagIds, 
+    searchCriteria, searchResults, isSearching, 
     selectedFileIds, toggleFileSelection, setFileSelection, clearFileSelection,
     removeTagFromFile, language, refreshAllScopes,
-    searchMode, searchResults, isSearching, setPreviewFileId, previewFileId
+    setPreviewFileId, previewFileId
   } = useAppStore();
 
   const t = translations[language];
@@ -34,36 +35,44 @@ export function HomePage() {
   };
 
   const filteredFiles = useMemo(() => {
+    const { filename, content, directory } = searchCriteria;
+    
+    // If backend search was performed (implied by having content/directory search or filename search results)
+    // We use searchResults as base if provided
     let sourceFiles = files;
-    // If content search and we have a query, use the search results from API
-    // Note: searchResults might be empty if search hasn't run yet, but isSearching would be true/false.
-    if (searchMode === 'content' && searchQuery.trim()) {
+    
+    // Check if we are in a "backend search mode"
+    const hasSearch = filename.trim() || content.trim() || directory.trim();
+    
+    // If we have search results from the API, we prefer them
+    if (hasSearch && searchResults.length > 0) {
         sourceFiles = searchResults;
+    } else if (hasSearch && !isSearching && searchResults.length === 0) {
+        // Search performed but no results
+        return [];
     }
 
-    console.log(`[HomePage] Filtering ${sourceFiles.length} files (Source: ${searchMode})...`);
-    const lowerQuery = searchQuery.toLowerCase();
+    console.log(`[HomePage] Filtering ${sourceFiles.length} files...`);
+    const lowerName = filename.toLowerCase();
     
     return sourceFiles.filter(file => {
       // Logic:
-      // 1. Search Match:
-      //    - If content mode: already filtered by API (sourceFiles = searchResults).
-      //    - If filename mode: check name includes query.
-      const matchesSearch = (searchMode === 'content' && searchQuery.trim()) 
-          ? true 
-          : file.name.toLowerCase().includes(lowerQuery);
-
+      // 1. Scope Match
       const matchesScope = activeScopeIds.length > 0 ? activeScopeIds.includes(file.scopeId) : false;
       
-      // Multi-Tag Match (OR Logic: match ANY selected tag)
+      // 2. Tag Match (OR Logic: match ANY selected tag)
       // If no tags selected, match all.
       const matchesTag = selectedTagIds.length > 0 
         ? file.tags.some((t: any) => selectedTagIds.includes(t.id)) 
         : true;
-        
-      return matchesSearch && matchesScope && matchesTag;
+      
+      // 3. Client-side fallback for Filename/Path if we are just filtering the main list
+      // (Though usually searchResults handles this, this helps if we haven't searched yet or are just filtering locally)
+      // But if we rely on searchResults, we assume they satisfy criteria.
+      
+      return matchesScope && matchesTag;
     });
-  }, [files, searchResults, searchQuery, searchMode, activeScopeIds, selectedTagIds]);
+  }, [files, searchResults, searchCriteria, activeScopeIds, selectedTagIds, isSearching]);
 
   const sortedFiles = useMemo(() => {
     console.log(`[HomePage] Sorting ${filteredFiles.length} files...`);
@@ -128,151 +137,155 @@ export function HomePage() {
   }
 
   // If a file is selected for preview, show the panel instead of the list
-  if (previewFileId) {
-      return <FilePreviewPanel />;
-  }
-
+  // Use display: none instead of conditional rendering to preserve scroll position and virtualizer state
   return (
     <>
-        <Group mb="md" justify="space-between">
-           <Group>
-             <IconFiles size={20} />
-             <Text fw={500}>
-                {t.files} ({filteredFiles.length} / {files.length})
-             </Text>
-             {selectedFileIds.length > 0 && <Badge color="violet">{t.selected.replace('{count}', selectedFileIds.length.toString())}</Badge>}
-             
-             <Tooltip label="Rescan active folders">
-                 <ActionIcon variant="light" color="gray" size="sm" onClick={() => refreshAllScopes()} loading={isLoading}>
-                    <IconRefresh size={14} />
-                 </ActionIcon>
-             </Tooltip>
-           </Group>
-           {(isLoading || isSearching) && <Loader size="xs" />}
-        </Group>
+        <div style={{ display: previewFileId ? 'block' : 'none', height: '100%' }}>
+            {previewFileId && <FilePreviewPanel />}
+        </div>
 
-        {error && (
-          <Alert icon={<IconAlertCircle size={16} />} title="Error" color="red" mb="md">
-            {error}
-          </Alert>
-        )}
+        <div style={{ display: previewFileId ? 'none' : 'block' }}>
+            <Group mb="md" justify="space-between">
+            <Group>
+                <IconFiles size={20} />
+                <Text fw={500}>
+                    {t.files} ({filteredFiles.length} / {files.length})
+                </Text>
+                {selectedFileIds.length > 0 && <Badge color="violet">{t.selected.replace('{count}', selectedFileIds.length.toString())}</Badge>}
+                
+                <Tooltip label="Rescan active folders">
+                    <ActionIcon variant="light" color="gray" size="sm" onClick={() => refreshAllScopes()} loading={isLoading}>
+                        <IconRefresh size={14} />
+                    </ActionIcon>
+                </Tooltip>
+            </Group>
+            </Group>
 
-        <div 
-          ref={parentRef} 
-          style={{ 
-            height: 'calc(100vh - 160px)', 
-            overflow: 'auto',
-            border: '1px solid var(--mantine-color-default-border)',
-            borderRadius: '4px'
-          }}
-        >
-          <Table verticalSpacing="xs" striped highlightOnHover style={{ tableLayout: 'fixed', minWidth: '100%' }}>
-            <Table.Thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'var(--mantine-color-body)' }}>
-              <Table.Tr>
-                <Table.Th style={{ width: '40px' }}>
-                    <Checkbox 
-                        checked={allFilteredSelected}
-                        indeterminate={someFilteredSelected}
-                        onChange={handleSelectAll}
-                    />
-                </Table.Th>
-                <Table.Th style={{ cursor: 'pointer', width: '50%' }} onClick={() => handleSort('name')}>
-                  {t.name} {sortBy === 'name' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
-                </Table.Th>
-                <Table.Th style={{ width: '25%' }}>{t.tags}</Table.Th>
-                <Table.Th style={{ cursor: 'pointer', width: '10%' }} onClick={() => handleSort('size')}>
-                  {t.size} {sortBy === 'size' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
-                </Table.Th>
-                <Table.Th style={{ cursor: 'pointer', width: '15%' }} onClick={() => handleSort('updatedAt')}>
-                  {t.updated} {sortBy === 'updatedAt' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
-                </Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-               {(isLoading || isSearching) && filteredFiles.length === 0 ? (
-                   <tr>
-                       <td colSpan={5}>
-                           <Center h={200}>
-                               <Loader type="dots" />
-                           </Center>
-                       </td>
-                   </tr>
-               ) : (
-                   <>
-                   {virtualItems.length > 0 && (
-                      <tr>
-                          <td style={{ height: virtualItems[0]?.start || 0, padding: 0, border: 0 }} colSpan={5} />
-                      </tr>
-                   )}
-                   {virtualItems.map((virtualRow) => {
-                     const file = sortedFiles[virtualRow.index];
-                     if (!file) return null;
-                     const isSelected = selectedIdSet.has(file.id);
-                     return (
-                        <FileRow key={file.id} file={file} data-index={virtualRow.index}>
-                            <Table.Td>
-                                <Checkbox 
-                                    checked={isSelected}
-                                    onChange={() => toggleFileSelection(file.id)}
-                                    onClick={(e) => e.stopPropagation()}
-                                />
-                            </Table.Td>
-                            <Table.Td>
-                                <Group gap="xs" wrap="nowrap">
-                                    <div style={{ flex: 1, overflow: 'hidden' }}>
-                                        <Text size="sm" fw={500} style={{ wordBreak: 'break-all', cursor: 'pointer' }} onClick={() => setPreviewFileId(file.id)}>
-                                            {file.name}
-                                        </Text>
-                                        {(file as any).snippet ? (
-                                            <Text size="xs" c="dimmed" style={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                <span dangerouslySetInnerHTML={{ __html: (file as any).snippet }} />
+            {error && (
+            <Alert icon={<IconAlertCircle size={16} />} title="Error" color="red" mb="md">
+                {error}
+            </Alert>
+            )}
+
+            <div 
+            ref={parentRef} 
+            style={{ 
+                height: 'calc(100vh - 160px)', 
+                overflow: 'auto',
+                border: '1px solid var(--mantine-color-default-border)',
+                borderRadius: '4px',
+                position: 'relative'
+            }}
+            >
+            <LoadingOverlay visible={isLoading || isSearching} overlayProps={{ blur: 1 }} loaderProps={{ size: 'md', type: 'dots' }} />
+            <Table verticalSpacing="xs" striped highlightOnHover style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+                <Table.Thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'var(--mantine-color-body)' }}>
+                <Table.Tr>
+                    <Table.Th style={{ width: '40px' }}>
+                        <Checkbox 
+                            checked={allFilteredSelected}
+                            indeterminate={someFilteredSelected}
+                            onChange={handleSelectAll}
+                        />
+                    </Table.Th>
+                    <Table.Th style={{ cursor: 'pointer', width: '50%' }} onClick={() => handleSort('name')}>
+                    {t.name} {sortBy === 'name' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                    </Table.Th>
+                    <Table.Th style={{ width: '25%' }}>{t.tags}</Table.Th>
+                    <Table.Th style={{ cursor: 'pointer', width: '10%' }} onClick={() => handleSort('size')}>
+                    {t.size} {sortBy === 'size' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                    </Table.Th>
+                    <Table.Th style={{ cursor: 'pointer', width: '15%' }} onClick={() => handleSort('updatedAt')}>
+                    {t.updated} {sortBy === 'updatedAt' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                    </Table.Th>
+                </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                {filteredFiles.length === 0 && (isLoading || isSearching) ? (
+                    <tr>
+                        <td colSpan={5}>
+                            <Center h={200}>
+                                <Loader type="dots" />
+                            </Center>
+                        </td>
+                    </tr>
+                ) : (
+                    <>
+                    {virtualItems.length > 0 && (
+                        <tr>
+                            <td style={{ height: virtualItems[0]?.start || 0, padding: 0, border: 0 }} colSpan={5} />
+                        </tr>
+                    )}
+                    {virtualItems.map((virtualRow) => {
+                        const file = sortedFiles[virtualRow.index];
+                        if (!file) return null;
+                        const isSelected = selectedIdSet.has(file.id);
+                        return (
+                            <FileRow key={file.id} file={file} data-index={virtualRow.index}>
+                                <Table.Td>
+                                    <Checkbox 
+                                        checked={isSelected}
+                                        onChange={() => toggleFileSelection(file.id)}
+                                        onClick={(e) => e.stopPropagation()}
+                                    />
+                                </Table.Td>
+                                <Table.Td>
+                                    <Group gap="xs" wrap="nowrap">
+                                        <div style={{ flex: 1, overflow: 'hidden' }}>
+                                            <Text size="sm" fw={500} style={{ wordBreak: 'break-all', cursor: 'pointer' }} onClick={() => setPreviewFileId(file.id)}>
+                                                {file.name}
                                             </Text>
-                                        ) : (
-                                            <Text size="xs" c="dimmed" style={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {file.path}
-                                            </Text>
-                                        )}
-                                    </div>
-                                </Group>
-                            </Table.Td>
-                            <Table.Td>
-                                <Group gap={5}>
-                                {file.tags.map((tag: any) => (
-                                    <Badge 
-                                    key={tag.id} 
-                                    variant="light" 
-                                    color={tag.color || 'appleBlue'}
-                                    rightSection={
-                                        <ActionIcon size="xs" color="gray" variant="transparent" onClick={(e) => { e.stopPropagation(); removeTagFromFile(file.id, tag.id); }}>
-                                        <IconX size={10} />
-                                        </ActionIcon>
-                                    }
-                                    >
-                                    {tag.name}
-                                    </Badge>
-                                ))}
-                                </Group>
-                            </Table.Td>
-                            <Table.Td>{(file.size / 1024).toFixed(1)} KB</Table.Td>
-                            <Table.Td>{new Date(file.updatedAt).toLocaleDateString()}</Table.Td>
-                        </FileRow>
-                     );
-                   })}
-                   {virtualItems.length > 0 && (
-                      <tr>
-                          <td style={{ height: rowVirtualizer.getTotalSize() - (virtualItems[virtualItems.length - 1]?.end || 0), padding: 0, border: 0 }} colSpan={5} />
-                      </tr>
-                   )}
-                   </>
-               )}
-            </Table.Tbody>
-          </Table>
-          
-          {!isLoading && filteredFiles.length === 0 && (
-            <Stack align="center" py="xl">
-              <Text c="dimmed">{t.noFiles}</Text>
-            </Stack>
-          )}
+                                            {(file as any).snippet ? (
+                                                <Text size="xs" c="dimmed" style={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    <span dangerouslySetInnerHTML={{ __html: (file as any).snippet }} />
+                                                </Text>
+                                            ) : (
+                                                <Text size="xs" c="dimmed" style={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {file.path}
+                                                </Text>
+                                            )}
+                                        </div>
+                                    </Group>
+                                </Table.Td>
+                                <Table.Td>
+                                    <Group gap={5}>
+                                    {file.tags.map((tag: any) => (
+                                        <Badge 
+                                        key={tag.id} 
+                                        variant="light" 
+                                        color={tag.color || 'appleBlue'}
+                                        rightSection={
+                                            <ActionIcon size="xs" color="gray" variant="transparent" onClick={(e) => { e.stopPropagation(); removeTagFromFile(file.id, tag.id); }}>
+                                            <IconX size={10} />
+                                            </ActionIcon>
+                                        }
+                                        >
+                                        {tag.name}
+                                        </Badge>
+                                    ))}
+                                    </Group>
+                                </Table.Td>
+                                <Table.Td>{(file.size / 1024).toFixed(1)} KB</Table.Td>
+                                <Table.Td>{new Date(file.updatedAt).toLocaleDateString()}</Table.Td>
+                            </FileRow>
+                        );
+                    })}
+                    {virtualItems.length > 0 && (
+                        <tr>
+                            <td style={{ height: rowVirtualizer.getTotalSize() - (virtualItems[virtualItems.length - 1]?.end || 0), padding: 0, border: 0 }} colSpan={5} />
+                        </tr>
+                    )}
+                    </>
+                )}
+                </Table.Tbody>
+            </Table>
+            
+            {!isLoading && !isSearching && filteredFiles.length === 0 && (
+                <Stack align="center" py="xl">
+                <Text c="dimmed">{t.noFiles}</Text>
+                </Stack>
+            )}
+            </div>
         </div>
     </>
   );

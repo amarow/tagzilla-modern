@@ -10,6 +10,7 @@ import * as path from 'path';
 import os from 'os';
 import AdmZip from 'adm-zip';
 import heicConvert from 'heic-convert';
+import mammoth from 'mammoth';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -221,6 +222,68 @@ app.get('/api/files', authenticateToken, async (req, res) => {
         res.json(files);
     } catch (e: any) {
         console.error(`[API] Failed to fetch files: ${e.message}`);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/files/:id/text-content', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const { id } = req.params;
+        
+        const sql = `
+            SELECT f.path, f.extension 
+            FROM FileHandle f 
+            JOIN Scope s ON f.scopeId = s.id 
+            WHERE f.id = ? AND s.userId = ?
+        `;
+        const file = db.prepare(sql).get(id, userId) as { path: string, extension: string };
+        
+        if (!file) {
+             res.status(404).json({ error: 'File not found or access denied' });
+             return;
+        }
+
+        const ext = file.extension.toLowerCase();
+        let text = "";
+
+        if (ext === '.docx') {
+            const result = await mammoth.extractRawText({ path: file.path });
+            text = result.value;
+        } else if (ext === '.odt') {
+            const zip = new AdmZip(file.path);
+            const contentXml = zip.readAsText('content.xml');
+            if (contentXml) {
+                let formatted = contentXml;
+                
+                // Paragraphs -> Newlines
+                formatted = formatted.replace(/<text:p[^>]*>/g, '\n\n');
+                
+                // Headings -> Markdown headers based on level
+                formatted = formatted.replace(/<text:h[^>]*text:outline-level="1"[^>]*>/g, '\n\n# ');
+                formatted = formatted.replace(/<text:h[^>]*text:outline-level="2"[^>]*>/g, '\n\n## ');
+                formatted = formatted.replace(/<text:h[^>]*text:outline-level="3"[^>]*>/g, '\n\n### ');
+                // Fallback for headings without explicit level
+                formatted = formatted.replace(/<text:h[^>]*>/g, '\n\n# ');
+                
+                // Tab -> spaces
+                formatted = formatted.replace(/<text:tab\/>/g, '    ');
+                
+                // Line break -> newline
+                formatted = formatted.replace(/<text:line-break\/>/g, '\n');
+
+                // Strip all other tags
+                text = formatted.replace(/<[^>]+>/g, '').trim();
+            }
+        } else {
+            // For other files, just read as text
+            text = await fs.readFile(file.path, 'utf8');
+        }
+
+        res.setHeader('Content-Type', 'text/plain');
+        res.send(text);
+
+    } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
@@ -582,16 +645,14 @@ app.delete('/api/tags/:id', authenticateToken, async (req, res) => {
 app.get('/api/search', authenticateToken, async (req, res) => {
     try {
         const userId = (req as AuthRequest).user!.id;
-        const q = req.query.q as string;
-        const mode = req.query.mode as string;
+        const { filename, content, directory } = req.query as { filename?: string, content?: string, directory?: string };
         
-        if (!q) {
-            res.status(400).json({ error: 'Query parameter q is required' });
+        if (!filename && !content && !directory) {
+            res.json([]); // No criteria, return empty
             return;
         }
         
-        const searchMode = (mode === 'content') ? 'content' : 'filename';
-        const results = await searchRepository.search(userId, q, searchMode);
+        const results = await searchRepository.search(userId, { filename, content, directory });
         res.json(results);
     } catch (e: any) {
         res.status(500).json({ error: e.message });

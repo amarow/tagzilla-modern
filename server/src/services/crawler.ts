@@ -198,7 +198,7 @@ export const crawlerService = {
     
     // Expanded default allowed extensions
     const allowedExtensions = searchSettings.allowedExtensions || 
-        ['.txt', '.md', '.markdown', '.json', '.ts', '.js', '.jsx', '.tsx', '.html', '.css', '.scss', '.xml', '.yaml', '.yml', '.sql', '.env', '.pdf', '.docx'];
+        ['.txt', '.md', '.markdown', '.json', '.ts', '.js', '.jsx', '.tsx', '.html', '.css', '.scss', '.xml', '.yaml', '.yml', '.sql', '.env', '.pdf', '.docx', '.odt'];
     
     let fileCount = 0;
     let ignoredCount = 0;
@@ -256,9 +256,18 @@ export const crawlerService = {
                         const mtimeStr = stats.mtime.toISOString();
 
                         // Optimization: Check if file already exists with same mtime and size
+                        // AND check if content is indexed (for supported files)
                         const existing = fileRepository.getFileMinimal(scopeId, fullPath);
+                        const ext = path.extname(fullPath).toLowerCase();
                         
-                        if (existing && existing.updatedAt === mtimeStr && existing.size === stats.size) {
+                        // Check if we SHOULD have content for this file
+                        const isAllowed = allowedExtensions.includes(ext);
+                        const isSupportedType = ['.txt', '.md', '.markdown', '.json', '.pdf', '.docx', '.odt', '.xml', '.html', '.ts', '.js'].includes(ext);
+                        
+                        // Treat as new if content is missing for supported types that are allowed
+                        const contentMissing = isAllowed && isSupportedType && (existing && !existing.hasContent);
+
+                        if (existing && existing.updatedAt === mtimeStr && existing.size === stats.size && !contentMissing) {
                             skippedCount++;
                             fileCount++; // Still count as "processed" in total
                             foundFileIds.push(existing.id);
@@ -270,10 +279,8 @@ export const crawlerService = {
                             });
                             foundFileIds.push(fileId);
                             
-                            const ext = path.extname(fullPath).toLowerCase();
-                            
                             // Limit: 20MB for binary, 5MB for text
-                            const maxSize = (ext === '.pdf' || ext === '.docx') ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
+                            const maxSize = (ext === '.pdf' || ext === '.docx' || ext === '.odt') ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
 
                             if (allowedExtensions.includes(ext) && stats.size < maxSize) {
                                 pendingWorkerTasks++;

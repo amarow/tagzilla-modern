@@ -10,3 +10,52 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Markdown Document Preview Styles */
+.markdown-body {
+  line-height: 1.6;
+}
+
+[data-mantine-color-scheme="light"] .markdown-body {
+    background-color: #fff;
+    color: #000;
+}
+
+[data-mantine-color-scheme="dark"] .markdown-body {
+    background-color: var(--mantine-color-dark-7);
+    color: var(--mantine-color-dark-0);
+}
+
+.markdown-body h1 {
+  font-size: 2rem;
+  border-bottom: 2px solid var(--mantine-color-gray-3);
+  padding-bottom: 0.3rem;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--mantine-primary-color-filled);
+}
+
+.markdown-body h2 {
+  font-size: 1.5rem;
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+  padding-bottom: 0.2rem;
+  margin-top: 1.2rem;
+  margin-bottom: 0.8rem;
+}
+
+.markdown-body h3 {
+  font-size: 1.25rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body p {
+  margin-bottom: 1rem;
+}
+
+.markdown-body hr {
+  height: 1px;
+  background-color: var(--mantine-color-gray-3);
+  border: none;
+  margin: 2rem 0;
+}
