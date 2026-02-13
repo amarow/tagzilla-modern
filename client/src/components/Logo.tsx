@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Text, Group } from '@mantine/core';
 
 export const TagzillaLogo = ({ size = 80, showText = true }: { size?: number, showText?: boolean }) => {

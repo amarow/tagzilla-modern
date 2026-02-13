@@ -228,17 +228,97 @@ interface AppState {
 
   
 
-    deletePrivacyProfile: (id: number) => Promise<void>;
+      deletePrivacyProfile: (id: number) => Promise<void>;
 
   
 
-  fetchPrivacyRules: (profileId: number) => Promise<PrivacyRule[]>;
+  
 
-  addPrivacyRule: (profileId: number, rule: Omit<PrivacyRule, 'id' | 'profileId' | 'isActive'>) => Promise<void>;
 
-  deletePrivacyRule: (id: number, profileId: number) => Promise<void>;
 
-  togglePrivacyRule: (id: number, isActive: boolean, profileId: number) => Promise<void>;
+  
+
+    
+
+  
+
+  
+
+
+
+  
+
+      fetchPrivacyRules: (profileId: number) => Promise<PrivacyRule[]>;
+
+  
+
+  
+
+
+
+  
+
+    
+
+  
+
+  
+
+
+
+  
+
+      addPrivacyRule: (profileId: number, rule: Omit<PrivacyRule, 'id' | 'profileId' | 'isActive'>) => Promise<void>;
+
+  
+
+  
+
+
+
+  
+
+    
+
+  
+
+  
+
+
+
+  
+
+      deletePrivacyRule: (id: number) => Promise<void>;
+
+  
+
+  
+
+
+
+  
+
+    
+
+  
+
+  
+
+
+
+  
+
+      togglePrivacyRule: (id: number, isActive: boolean) => Promise<void>;
+
+  
+
+  
+
+
+
+  
+
+    
 
 
 
@@ -567,7 +647,7 @@ export const useAppStore = create<AppState>()(
             }
           },
     
-          deletePrivacyRule: async (id, profileId) => {
+          deletePrivacyRule: async (id) => {
             try {
               const res = await authFetch(`${API_BASE}/api/privacy/rules/${id}`, get().token, {
                 method: 'DELETE'
@@ -580,9 +660,9 @@ export const useAppStore = create<AppState>()(
             }
           },
     
-          togglePrivacyRule: async (id, isActive, profileId) => {
+          togglePrivacyRule: async (id, isActive) => {
             try {
-              const res = await authFetch(`${API_BASE}/api/privacy/rules/${id}/toggle`, get().token, {
+              await authFetch(`${API_BASE}/api/privacy/rules/${id}/toggle`, get().token, {
                 method: 'PATCH',
                 body: JSON.stringify({ isActive })
               });

@@ -53,7 +53,6 @@ export function HomePage() {
     }
 
     console.log(`[HomePage] Filtering ${sourceFiles.length} files...`);
-    const lowerName = filename.toLowerCase();
     
     return sourceFiles.filter(file => {
       // Logic:
