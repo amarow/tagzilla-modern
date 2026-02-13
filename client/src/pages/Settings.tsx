@@ -2,12 +2,12 @@ import {
     Title, Container, Button, Group, Text, Card, Stack, 
     ActionIcon, ScrollArea, Modal, TextInput, Loader, Checkbox,
     useMantineColorScheme, SegmentedControl, PasswordInput, MultiSelect,
-    Select, Switch, Table, Badge
+    Select, Switch, Table, Badge, Paper, Center
 } from '@mantine/core';
 import { 
     IconFolder, IconPlus, IconRefresh, IconTrash, IconArrowUp, IconCheck,
     IconSunHigh, IconMoonStars, IconArrowLeft, IconKey, IconCopy,
-    IconShieldLock, IconSettings, IconList, IconEdit
+    IconShieldLock, IconSettings
 } from '@tabler/icons-react';
 import { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
@@ -20,7 +20,7 @@ export function SettingsPage() {
         activeScopeIds, toggleScopeActive, language, user,
         changePassword, isLoading, tags,
         apiKeys, fetchApiKeys, createApiKey, deleteApiKey, updateApiKey,
-        privacyProfiles, fetchPrivacyProfiles, createPrivacyProfile, deletePrivacyProfile,
+        privacyProfiles, createPrivacyProfile, deletePrivacyProfile,
         fetchPrivacyRules, addPrivacyRule, deletePrivacyRule, togglePrivacyRule, updatePrivacyProfile
     } = useAppStore();
 
@@ -41,9 +41,6 @@ export function SettingsPage() {
     const [existingKeyString, setExistingKeyString] = useState<string | null>(null);
 
     // Privacy State
-    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-    const [newProfileName, setNewProfileName] = useState('');
-    
     const [activeProfileId, setActiveProfileId] = useState<number | null>(null);
     const [activeProfileName, setActiveProfileName] = useState('');
     const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
@@ -66,14 +63,12 @@ export function SettingsPage() {
             if (e.key === 'Escape') {
                 if (isBrowserOpen) {
                     setIsBrowserOpen(false);
-                } else {
-                    navigate('/');
                 }
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [navigate, isBrowserOpen]);
+    }, [isBrowserOpen]);
 
     const handleChangePassword = async () => {
         if (!currentPassword || !newPassword) return;
@@ -121,425 +116,448 @@ export function SettingsPage() {
     };
 
     return (
-        <Container size="md" py="xl">
-            <Group justify="space-between" mb="md">
-                <Group>
-                    <ActionIcon variant="subtle" color="gray" onClick={() => navigate('/')}>
-                        <IconArrowLeft size={24} />
-                    </ActionIcon>
-                    <Title order={2}>{t.settings}</Title>
+        <Paper 
+            style={{ 
+                height: 'calc(100vh - 100px)', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                overflow: 'hidden',
+                border: '1px solid var(--mantine-color-default-border)',
+                position: 'relative'
+            }} 
+            p="md" 
+            shadow="xs"
+        >
+            {/* Header Area - Fixed */}
+            <Group justify="space-between" mb="md" style={{ flexShrink: 0 }}>
+                <Group gap="xs" style={{ flex: 1, minWidth: 0 }}>
+                    <Button 
+                        variant="subtle" 
+                        color="gray" 
+                        leftSection={<IconArrowLeft size={20} />}
+                        onClick={() => navigate('/')}
+                    >
+                        {t.back}
+                    </Button>
+                    <div style={{ minWidth: 0, borderLeft: '1px solid var(--mantine-color-default-border)', paddingLeft: '1rem' }}>
+                        <Text fw={700} size="lg" truncate>{t.settings} {t.userLabel} {user?.username}</Text>
+                    </div>
                 </Group>
-                <Text c="dimmed">{user?.username}</Text>
             </Group>
-            
-            <Card withBorder shadow="sm" radius="md">
-                <Card.Section withBorder inheritPadding py="xs">
-                    <Group justify="space-between">
-                        <Stack gap={0}>
-                            <Text fw={500}>{t.managedScopes}</Text>
-                            <Text size="xs" c="dimmed">{t.checkScopes}</Text>
-                        </Stack>
-                        <Button 
-                            leftSection={<IconPlus size={16} />} 
-                            variant="light" 
-                            size="xs" 
-                            onClick={handleOpenBrowser}
-                        >
-                            {t.addScope}
-                        </Button>
-                    </Group>
-                </Card.Section>
 
-                <Stack gap="xs" mt="md">
-                    {scopes.length === 0 && (
-                        <Text c="dimmed" ta="center" py="md">{t.noScopesActive}</Text>
-                    )}
-                    
-                    {scopes.map(scope => (
-                        <Group key={scope.id} justify="space-between" p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: '4px' }}>
+            {/* Content Area - Scrollable */}
+            <div style={{ flex: 1, overflowY: 'auto', paddingRight: '1rem' }}>
+                <Container size="md" py="xl">
+                    <Title order={3} mb="md">{t.appearance}</Title>
+                    <Card withBorder shadow="sm" radius="md" mb="xl">
+                        <Group justify="space-between">
                             <Group>
-                                <Checkbox 
-                                    checked={activeScopeIds.includes(scope.id)}
-                                    onChange={() => toggleScopeActive(scope.id)}
-                                    label={
-                                        <div>
-                                            <Group gap="xs">
-                                                <IconFolder size={20} color="gray" style={{ display: 'inline' }} />
-                                                <Text size="sm" fw={500} span>{scope.name}</Text>
-                                            </Group>
-                                            <Text size="xs" c="dimmed" pl={34}>{scope.path}</Text>
-                                        </div>
-                                    }
-                                />
+                                {colorScheme === 'dark' ? <IconMoonStars size={20} /> : <IconSunHigh size={20} />}
+                                <Text fw={500}>{t.toggleTheme}</Text>
                             </Group>
-                            <Group gap="xs">
-                                <ActionIcon 
-                                    variant="light" 
-                                    onClick={() => refreshScope(scope.id)}
-                                    title={t.rescan}
-                                >
-                                    <IconRefresh size={16} />
-                                </ActionIcon>
-                                <ActionIcon 
-                                    variant="light" 
-                                    color="red"
-                                    onClick={() => { 
-                                        if(confirm(t.deleteScope)) deleteScope(scope.id); 
-                                    }}
-                                    title={t.removeScope}
-                                >
-                                    <IconTrash size={16} />
-                                </ActionIcon>
-                            </Group>
+                            <SegmentedControl 
+                                value={colorScheme}
+                                onChange={(val: any) => setColorScheme(val)}
+                                data={[
+                                    { label: 'Light', value: 'light' },
+                                    { label: 'Dark', value: 'dark' },
+                                    { label: 'Auto', value: 'auto' }
+                                ]}
+                            />
                         </Group>
-                    ))}
-                </Stack>
-            </Card>
-
-            <Title order={3} mt="xl" mb="md">{t.appearance}</Title>
-            <Card withBorder shadow="sm" radius="md">
-                <Group justify="space-between">
-                    <Group>
-                        {colorScheme === 'dark' ? <IconMoonStars size={20} /> : <IconSunHigh size={20} />}
-                        <Text fw={500}>{t.toggleTheme}</Text>
-                    </Group>
-                    <SegmentedControl 
-                        value={colorScheme}
-                        onChange={(val: any) => setColorScheme(val)}
-                        data={[
-                            { label: 'Light', value: 'light' },
-                            { label: 'Dark', value: 'dark' },
-                            { label: 'Auto', value: 'auto' }
-                        ]}
-                    />
-                </Group>
-            </Card>
-
-            <Title order={3} mt="xl" mb="md">{t.security}</Title>
-            <Card withBorder shadow="sm" radius="md">
-                <form autoComplete="off">
-                <Stack gap="md">
-                    <Text fw={500}>{t.security}</Text>
-                    {/* Fake hidden fields to trick browser */}
-                    <input type="text" style={{display: 'none'}} autoComplete="username" />
-                    <input type="password" style={{display: 'none'}} autoComplete="current-password" />
-
-                    <Group align="flex-end">
-                        <PasswordInput 
-                            label={t.currentPassword} 
-                            value={currentPassword}
-                            onChange={(e) => setCurrentPassword(e.currentTarget.value)}
-                            autoComplete="current-password"
-                            name="current_password_field"
-                        />
-                        <PasswordInput 
-                            label={t.newPassword} 
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.currentTarget.value)}
-                            autoComplete="new-password"
-                            name="new_password_field"
-                        />
-                        <Button 
-                            onClick={handleChangePassword} 
-                            loading={isLoading}
-                            disabled={!currentPassword || !newPassword}
-                        >
-                            {t.update}
-                        </Button>
-                    </Group>
-                </Stack>
-                </form>
-            </Card>
-
-            <Title order={3} mt="xl" mb="md">{t.apiKeys}</Title>
-            <Card withBorder shadow="sm" radius="md">
-                <Card.Section withBorder inheritPadding py="xs">
-                    <Group justify="space-between">
-                        <Stack gap={0}>
-                            <Text fw={500}>{t.apiKeys}</Text>
-                            <Text size="xs" c="dimmed">{t.apiKeysDesc}</Text>
-                        </Stack>
-                        <Button 
-                            leftSection={<IconPlus size={16} />} 
-                            variant="light" 
-                            size="xs" 
-                            onClick={() => {
-                                setCreatedKey(null);
-                                setNewKeyName('');
-                                setSelectedTagsForKey([]);
-                                setIsKeyModalOpen(true);
-                            }}
-                        >
-                            {t.createKey}
-                        </Button>
-                    </Group>
-                </Card.Section>
-
-                <Stack gap="xs" mt="md">
-                    {apiKeys.length === 0 && (
-                        <Text c="dimmed" ta="center" py="md">No API keys created yet.</Text>
-                    )}
+                    </Card>
                     
-                    {apiKeys.map(key => (
-                        <Group key={key.id} justify="space-between" p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: '4px' }}>
-                            <Stack gap={4} style={{ flex: 1 }}>
-                                <Group gap="xs">
-                                    <IconKey size={20} color="gray" />
-                                    <Text size="sm" fw={500}>{key.name}</Text>
-                                </Group>
-                                <Group gap="xs">
-                                    <Text size="xs" c="dimmed">
-                                        {t.lastUsed}: {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleString() : t.never}
-                                    </Text>
-                                    <Text size="xs" c="dimmed" style={{ borderLeft: '1px solid gray', paddingLeft: '8px' }}>
-                                        {key.permissions.map(p => {
-                                            if (p.startsWith('tag:')) {
-                                                const id = parseInt(p.split(':')[1]);
-                                                const tag = tags.find(t => t.id === id);
-                                                return tag ? tag.name : p;
-                                            }
-                                            return p;
-                                        }).join(', ')}
-                                    </Text>
-                                    {(key as any).privacyProfileName && (
-                                        <Badge variant="outline" size="xs" color="blue" leftSection={<IconShieldLock size={10} />}>
-                                            {(key as any).privacyProfileName}
-                                        </Badge>
-                                    )}
-                                </Group>
-                            </Stack>
-                            <Group gap="xs">
-                                <ActionIcon 
+                    <Title order={3} mb="md">{t.managedScopes}</Title>
+                    <Card withBorder shadow="sm" radius="md" mb="xl">
+                        <Card.Section withBorder inheritPadding py="xs">
+                            <Group justify="space-between">
+                                <Stack gap={0}>
+                                    <Text fw={500}>{t.managedScopes}</Text>
+                                    <Text size="xs" c="dimmed">{t.checkScopes}</Text>
+                                </Stack>
+                                <Button 
+                                    leftSection={<IconPlus size={16} />} 
                                     variant="light" 
+                                    size="xs" 
+                                    onClick={handleOpenBrowser}
+                                >
+                                    {t.add}
+                                </Button>
+                            </Group>
+                        </Card.Section>
+
+                        <Stack gap="xs" mt="md">
+                            {scopes.length === 0 && (
+                                <Text c="dimmed" ta="center" py="md">{t.noScopesActive}</Text>
+                            )}
+                            
+                            {scopes.map(scope => (
+                                <Group key={scope.id} justify="space-between" p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: '4px' }}>
+                                    <Group>
+                                        <Checkbox 
+                                            checked={activeScopeIds.includes(scope.id)}
+                                            onChange={() => toggleScopeActive(scope.id)}
+                                            label={
+                                                <div>
+                                                    <Group gap="xs">
+                                                        <IconFolder size={20} color="gray" style={{ display: 'inline' }} />
+                                                        <Text size="sm" fw={500} span>{scope.name}</Text>
+                                                    </Group>
+                                                    <Text size="xs" c="dimmed" pl={34}>{scope.path}</Text>
+                                                </div>
+                                            }
+                                        />
+                                    </Group>
+                                    <Group gap="xs">
+                                        <ActionIcon 
+                                            variant="light" 
+                                            onClick={() => refreshScope(scope.id)}
+                                            title={t.rescan}
+                                        >
+                                            <IconRefresh size={16} />
+                                        </ActionIcon>
+                                        <ActionIcon 
+                                            variant="light" 
+                                            color="red"
+                                            onClick={() => { 
+                                                if(confirm(t.deleteScope)) deleteScope(scope.id); 
+                                            }}
+                                            title={t.removeScope}
+                                        >
+                                            <IconTrash size={16} />
+                                        </ActionIcon>
+                                    </Group>
+                                </Group>
+                            ))}
+                        </Stack>
+                    </Card>
+
+                    <Title order={3} mb="md">{t.security}</Title>
+                    <Card withBorder shadow="sm" radius="md" mb="xl">
+                        <form autoComplete="off">
+                        <Stack gap="md">
+                            <Text fw={500}>{t.security}</Text>
+                            {/* Fake hidden fields to trick browser */}
+                            <input type="text" style={{display: 'none'}} autoComplete="username" />
+                            <input type="password" style={{display: 'none'}} autoComplete="current-password" />
+
+                            <Group align="flex-end">
+                                <PasswordInput 
+                                    label={t.currentPassword} 
+                                    value={currentPassword}
+                                    onChange={(e) => setCurrentPassword(e.currentTarget.value)}
+                                    autoComplete="current-password"
+                                    name="current_password_field"
+                                />
+                                <PasswordInput 
+                                    label={t.newPassword} 
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.currentTarget.value)}
+                                    autoComplete="new-password"
+                                    name="new_password_field"
+                                />
+                                <Button 
+                                    onClick={handleChangePassword} 
+                                    loading={isLoading}
+                                    disabled={!currentPassword || !newPassword}
+                                >
+                                    {t.update}
+                                </Button>
+                            </Group>
+                        </Stack>
+                        </form>
+                    </Card>
+
+                    <Title order={3} mb="md">{t.apiKeys}</Title>
+                    <Card withBorder shadow="sm" radius="md" mb="xl">
+                        <Card.Section withBorder inheritPadding py="xs">
+                            <Group justify="space-between">
+                                <Stack gap={0}>
+                                    <Text fw={500}>{t.apiKeys}</Text>
+                                    <Text size="xs" c="dimmed">{t.apiKeysDesc}</Text>
+                                </Stack>
+                                <Button 
+                                    leftSection={<IconPlus size={16} />} 
+                                    variant="light" 
+                                    size="xs" 
                                     onClick={() => {
-                                        setEditingKeyId(key.id);
-                                        setNewKeyName(key.name);
-                                        setSelectedTagsForKey(key.permissions.filter(p => p.startsWith('tag:')).map(p => p.split(':')[1]));
-                                        setSelectedPrivacyProfileId(key.privacyProfileId ? String(key.privacyProfileId) : 'none');
-                                        setExistingKeyString(key.key || null);
-                                        setCreatedKey(null);
+                                        setNewKeyName('');
+                                        setSelectedTagsForKey([]);
                                         setIsKeyModalOpen(true);
                                     }}
                                 >
-                                    <IconSettings size={16} />
-                                </ActionIcon>
-                                <ActionIcon 
-                                    variant="light" 
-                                    color="red"
-                                    onClick={() => { 
-                                        if(confirm('Delete this API key?')) deleteApiKey(key.id); 
-                                    }}
-                                >
-                                    <IconTrash size={16} />
-                                </ActionIcon>
+                                    {t.add}
+                                </Button>
                             </Group>
-                        </Group>
-                    ))}
-                </Stack>
-            </Card>
+                        </Card.Section>
 
-            <Title order={3} mt="xl" mb="md">{t.privacy}</Title>
-            <Card withBorder shadow="sm" radius="md">
-                <Card.Section withBorder inheritPadding py="xs">
-                    <Group justify="space-between">
-                        <Stack gap={0}>
-                            <Text fw={500}>{t.privacy}</Text>
-                            <Text size="xs" c="dimmed">{t.privacyDesc}</Text>
+                        <Stack gap="xs" mt="md">
+                            {apiKeys.length === 0 && (
+                                <Text c="dimmed" ta="center" py="md">No API keys created yet.</Text>
+                            )}
+                            
+                            {apiKeys.map(key => (
+                                <Group key={key.id} justify="space-between" p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: '4px' }}>
+                                    <Stack gap={4} style={{ flex: 1 }}>
+                                        <Group gap="xs">
+                                            <IconKey size={20} color="gray" />
+                                            <Text size="sm" fw={500}>{key.name}</Text>
+                                        </Group>
+                                        <Group gap="xs">
+                                            <Text size="xs" c="dimmed">
+                                                {t.lastUsed}: {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleString() : t.never}
+                                            </Text>
+                                            <Text size="xs" c="dimmed" style={{ borderLeft: '1px solid gray', paddingLeft: '8px' }}>
+                                                {key.permissions.map(p => {
+                                                    if (p.startsWith('tag:')) {
+                                                        const id = parseInt(p.split(':')[1]);
+                                                        const tag = tags.find(t => t.id === id);
+                                                        return tag ? tag.name : p;
+                                                    }
+                                                    return p;
+                                                }).join(', ')}
+                                            </Text>
+                                            {(key as any).privacyProfileName && (
+                                                <Badge variant="outline" size="xs" color="blue" leftSection={<IconShieldLock size={10} />}>
+                                                    {(key as any).privacyProfileName}
+                                                </Badge>
+                                            )}
+                                        </Group>
+                                    </Stack>
+                                    <Group gap="xs">
+                                        <ActionIcon 
+                                            variant="light" 
+                                            onClick={() => {
+                                                setEditingKeyId(key.id);
+                                                setNewKeyName(key.name);
+                                                setSelectedTagsForKey(key.permissions.filter(p => p.startsWith('tag:')).map(p => p.split(':')[1]));
+                                                setSelectedPrivacyProfileId(key.privacyProfileId ? String(key.privacyProfileId) : 'none');
+                                                setExistingKeyString(key.key || null);
+                                                setIsKeyModalOpen(true);
+                                            }}
+                                        >
+                                            <IconSettings size={16} />
+                                        </ActionIcon>
+                                        <ActionIcon 
+                                            variant="light" 
+                                            color="red"
+                                            onClick={() => { 
+                                                if(confirm('Delete this API key?')) deleteApiKey(key.id); 
+                                            }}
+                                        >
+                                            <IconTrash size={16} />
+                                        </ActionIcon>
+                                    </Group>
+                                </Group>
+                            ))}
                         </Stack>
-                        <Button 
-                            leftSection={<IconPlus size={16} />} 
-                            variant="light" 
-                            size="xs" 
-                            onClick={() => {
-                                setNewProfileName('');
-                                setIsProfileModalOpen(true);
-                            }}
-                        >
-                            {t.addScope}
-                        </Button>
-                    </Group>
-                </Card.Section>
+                    </Card>
 
-                <Stack gap="xs" mt="md">
-                    {privacyProfiles.length === 0 && (
-                        <Text c="dimmed" ta="center" py="md">No privacy profiles created yet.</Text>
-                    )}
-                    
-                    {privacyProfiles.map(profile => (
-                        <Group key={profile.id} justify="space-between" p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: '4px' }}>
-                            <Group>
-                                <IconShieldLock size={20} color="gray" />
-                                <div>
-                                    <Text size="sm" fw={500}>{profile.name}</Text>
-                                    <Text size="xs" c="dimmed">{profile.ruleCount} {t.rules}</Text>
-                                </div>
-                            </Group>
-                            <Group gap="xs">
-                                <ActionIcon 
+                    <Title order={3} mb="md">{t.privacy}</Title>
+                    <Card withBorder shadow="sm" radius="md" mb="xl">
+                        <Card.Section withBorder inheritPadding py="xs">
+                            <Group justify="space-between">
+                                <Stack gap={0}>
+                                    <Text fw={500}>{t.privacy}</Text>
+                                    <Text size="xs" c="dimmed">{t.privacyDesc}</Text>
+                                </Stack>
+                                <Button 
+                                    leftSection={<IconPlus size={16} />} 
                                     variant="light" 
-                                    onClick={async () => {
-                                        const r = await fetchPrivacyRules(profile.id);
-                                        setRules(r);
-                                        setActiveProfileId(profile.id);
-                                        setActiveProfileName(profile.name);
+                                    size="xs" 
+                                    onClick={() => {
+                                        setActiveProfileId(null);
+                                        setActiveProfileName('');
+                                        setRules([]);
                                         setIsRulesModalOpen(true);
                                     }}
                                 >
-                                    <IconSettings size={16} />
-                                </ActionIcon>
-                                <ActionIcon 
-                                    variant="light" 
-                                    color="red"
-                                    onClick={() => { 
-                                        if(confirm('Delete this privacy profile?')) deletePrivacyProfile(profile.id); 
-                                    }}
-                                >
-                                    <IconTrash size={16} />
-                                </ActionIcon>
+                                    {t.add}
+                                </Button>
                             </Group>
-                        </Group>
-                    ))}
-                </Stack>
-            </Card>
+                        </Card.Section>
 
-            <Modal 
-                opened={isProfileModalOpen} 
-                onClose={() => {
-                    setIsProfileModalOpen(false);
-                }} 
-                title={t.createProfile}
-            >
-                <Stack>
-                    <TextInput 
-                        label={t.profileName} 
-                        value={newProfileName}
-                        onChange={(e) => setNewProfileName(e.currentTarget.value)}
-                        autoFocus
-                    />
-                    <Button 
-                        onClick={async () => {
-                            await createPrivacyProfile(newProfileName);
-                            setIsProfileModalOpen(false);
-                        }}
-                        disabled={!newProfileName}
-                    >
-                        {t.save}
-                    </Button>
-                </Stack>
-            </Modal>
+                        <Stack gap="xs" mt="md">
+                            {privacyProfiles.length === 0 && (
+                                <Text c="dimmed" ta="center" py="md">No privacy profiles created yet.</Text>
+                            )}
+                            
+                            {privacyProfiles.map(profile => (
+                                <Group key={profile.id} justify="space-between" p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: '4px' }}>
+                                    <Group>
+                                        <IconShieldLock size={20} color="gray" />
+                                        <div>
+                                            <Text size="sm" fw={500}>{profile.name}</Text>
+                                            <Text size="xs" c="dimmed">{profile.ruleCount} {t.rules}</Text>
+                                        </div>
+                                    </Group>
+                                    <Group gap="xs">
+                                        <ActionIcon 
+                                            variant="light" 
+                                            onClick={async () => {
+                                                const r = await fetchPrivacyRules(profile.id);
+                                                setRules(r);
+                                                setActiveProfileId(profile.id);
+                                                setActiveProfileName(profile.name);
+                                                setIsRulesModalOpen(true);
+                                            }}
+                                        >
+                                            <IconSettings size={16} />
+                                        </ActionIcon>
+                                        <ActionIcon 
+                                            variant="light" 
+                                            color="red"
+                                            onClick={() => { 
+                                                if(confirm('Delete this privacy profile?')) deletePrivacyProfile(profile.id); 
+                                            }}
+                                        >
+                                            <IconTrash size={16} />
+                                        </ActionIcon>
+                                    </Group>
+                                </Group>
+                            ))}
+                        </Stack>
+                    </Card>
+                </Container>
+            </div>
 
             <Modal 
                 opened={isRulesModalOpen} 
                 onClose={() => setIsRulesModalOpen(false)} 
-                title={t.rules}
+                title={t.anonymization}
                 size="xl"
             >
                 <Stack>
                     <Group align="flex-end">
                         <TextInput 
                             label={t.profileName}
+                            placeholder="e.g. My Privacy Rules"
                             value={activeProfileName}
                             onChange={(e) => setActiveProfileName(e.currentTarget.value)}
                             style={{ flex: 1 }}
+                            autoFocus={!activeProfileId}
                         />
                         <Button 
                             variant="light"
                             onClick={async () => {
                                 if (activeProfileId) {
                                     await updatePrivacyProfile(activeProfileId, activeProfileName);
+                                } else if (activeProfileName.trim()) {
+                                    const newProfile = await createPrivacyProfile(activeProfileName.trim());
+                                    if (newProfile) {
+                                        setActiveProfileId(newProfile.id);
+                                        setActiveProfileName(newProfile.name);
+                                    }
                                 }
                             }}
+                            disabled={!activeProfileName.trim()}
+                            loading={isLoading}
                         >
                             <IconCheck size={16} />
                         </Button>
                     </Group>
 
-                    <Card withBorder p="sm">
-                        <Text fw={500} size="sm" mb="xs">{t.addRule}</Text>
-                        <Group align="flex-end">
-                            <Select 
-                                label={t.type}
-                                data={[
-                                    { value: 'LITERAL', label: t.literal },
-                                    { value: 'REGEX', label: t.regex }
-                                ]}
-                                value={newRule.type}
-                                onChange={(val) => setNewRule({...newRule, type: val || 'LITERAL'})}
-                                style={{ width: 150 }}
-                            />
-                            <TextInput 
-                                label={t.pattern}
-                                placeholder="e.g. My Company Name"
-                                value={newRule.pattern}
-                                onChange={(e) => setNewRule({...newRule, pattern: e.currentTarget.value})}
-                                style={{ flex: 1 }}
-                            />
-                            <TextInput 
-                                label={t.replacement}
-                                value={newRule.replacement}
-                                onChange={(e) => setNewRule({...newRule, replacement: e.currentTarget.value})}
-                                style={{ width: 150 }}
-                            />
-                            <Button 
-                                onClick={async () => {
-                                    if (activeProfileId) {
-                                        await addPrivacyRule(activeProfileId, newRule as any);
-                                        const r = await fetchPrivacyRules(activeProfileId);
-                                        setRules(r);
-                                        setNewRule({ type: 'LITERAL', pattern: '', replacement: '[REDACTED]' });
-                                    }
-                                }}
-                                disabled={!newRule.pattern}
-                            >
-                                <IconPlus size={16} />
-                            </Button>
-                        </Group>
-                    </Card>
+                    {activeProfileId ? (
+                        <>
+                            <Card withBorder p="sm">
+                                <Text fw={500} size="sm" mb="xs">{t.addRule}</Text>
+                                <Group align="flex-end">
+                                    <Select 
+                                        label={t.type}
+                                        data={[
+                                            { value: 'LITERAL', label: t.literal },
+                                            { value: 'REGEX', label: t.regex }
+                                        ]}
+                                        value={newRule.type}
+                                        onChange={(val) => setNewRule({...newRule, type: val || 'LITERAL'})}
+                                        style={{ width: 150 }}
+                                    />
+                                    <TextInput 
+                                        label={t.pattern}
+                                        placeholder="e.g. My Company Name"
+                                        value={newRule.pattern}
+                                        onChange={(e) => setNewRule({...newRule, pattern: e.currentTarget.value})}
+                                        style={{ flex: 1 }}
+                                    />
+                                    <TextInput 
+                                        label={t.replacement}
+                                        value={newRule.replacement}
+                                        onChange={(e) => setNewRule({...newRule, replacement: e.currentTarget.value})}
+                                        style={{ width: 150 }}
+                                    />
+                                    <Button 
+                                        onClick={async () => {
+                                            if (activeProfileId && newRule.pattern.trim()) {
+                                                await addPrivacyRule(activeProfileId, {
+                                                    type: newRule.type as any,
+                                                    pattern: newRule.pattern.trim(),
+                                                    replacement: newRule.replacement
+                                                });
+                                                const r = await fetchPrivacyRules(activeProfileId);
+                                                setRules(r);
+                                                setNewRule({ type: 'LITERAL', pattern: '', replacement: '[REDACTED]' });
+                                            }
+                                        }}
+                                        disabled={!newRule.pattern.trim()}
+                                        loading={isLoading}
+                                    >
+                                        <IconPlus size={16} />
+                                    </Button>
+                                </Group>
+                            </Card>
 
-                    <Table striped highlightOnHover withBorder>
-                        <thead>
-                            <tr>
-                                <th>{t.type}</th>
-                                <th>{t.pattern}</th>
-                                <th>{t.replacement}</th>
-                                <th style={{ width: 80 }}>{t.active}</th>
-                                <th style={{ width: 50 }}></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {rules.map(rule => (
-                                <tr key={rule.id}>
-                                    <td><Badge size="xs" variant="light">{rule.type}</Badge></td>
-                                    <td><Text size="sm" style={{ fontFamily: 'monospace' }}>{rule.pattern}</Text></td>
-                                    <td><Text size="sm">{rule.replacement}</Text></td>
-                                    <td>
-                                        <Switch 
-                                            checked={!!rule.isActive}
-                                            onChange={async (e) => {
-                                                await togglePrivacyRule(rule.id, e.currentTarget.checked, rule.profileId);
-                                                const r = await fetchPrivacyRules(rule.profileId);
-                                                setRules(r);
-                                            }}
-                                            size="xs"
-                                        />
-                                    </td>
-                                    <td>
-                                        <ActionIcon 
-                                            variant="subtle" 
-                                            color="red" 
-                                            onClick={async () => {
-                                                await deletePrivacyRule(rule.id, rule.profileId);
-                                                const r = await fetchPrivacyRules(rule.profileId);
-                                                setRules(r);
-                                            }}
-                                        >
-                                            <IconTrash size={14} />
-                                        </ActionIcon>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </Table>
+                            <Table striped highlightOnHover withTableBorder>
+                                <thead>
+                                    <tr>
+                                        <th>{t.type}</th>
+                                        <th>{t.pattern}</th>
+                                        <th>{t.replacement}</th>
+                                        <th style={{ width: 80 }}>{t.active}</th>
+                                        <th style={{ width: 50 }}></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rules.map(rule => (
+                                        <tr key={rule.id}>
+                                            <td><Badge size="xs" variant="light">{rule.type}</Badge></td>
+                                            <td><Text size="sm" style={{ fontFamily: 'monospace' }}>{rule.pattern}</Text></td>
+                                            <td><Text size="sm">{rule.replacement}</Text></td>
+                                            <td>
+                                                <Switch 
+                                                    checked={!!rule.isActive}
+                                                    onChange={async (e) => {
+                                                        await togglePrivacyRule(rule.id, e.currentTarget.checked, rule.profileId);
+                                                        const r = await fetchPrivacyRules(rule.profileId);
+                                                        setRules(r);
+                                                    }}
+                                                    size="xs"
+                                                />
+                                            </td>
+                                            <td>
+                                                <ActionIcon 
+                                                    variant="subtle" 
+                                                    color="red" 
+                                                    onClick={async () => {
+                                                        await deletePrivacyRule(rule.id, rule.profileId);
+                                                        const r = await fetchPrivacyRules(rule.profileId);
+                                                        setRules(r);
+                                                    }}
+                                                >
+                                                    <IconTrash size={14} />
+                                                </ActionIcon>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </Table>
+                        </>
+                    ) : (
+                        <Paper withBorder p="md" style={{ borderStyle: 'dashed', opacity: 0.6 }}>
+                            <Center>
+                                <Text size="sm" c="dimmed">{t.rules} {t.never}</Text>
+                            </Center>
+                        </Paper>
+                    )}
                 </Stack>
             </Modal>
 
@@ -553,7 +571,7 @@ export function SettingsPage() {
                     setSelectedPrivacyProfileId(null);
                     setExistingKeyString(null);
                 }} 
-                title={editingKeyId ? t.editTag : t.createKey}
+                title={editingKeyId ? t.apiKey : t.createKey}
             >
                 <Stack>
                     <>
@@ -612,27 +630,49 @@ export function SettingsPage() {
                                     ? parseInt(selectedPrivacyProfileId) 
                                     : null;
                                 
-                                if (editingKeyId) {
-                                    await updateApiKey(editingKeyId, { 
-                                        name: newKeyName, 
-                                        permissions: perms as any, 
-                                        privacyProfileId: profileId 
-                                    });
-                                } else {
-                                    await createApiKey(newKeyName, perms, profileId || undefined);
-                                }
-                                setIsKeyModalOpen(false);
-                                setEditingKeyId(null);
-                                setNewKeyName('');
-                                setSelectedTagsForKey([]);
-                                setSelectedPrivacyProfileId(null);
-                                setExistingKeyString(null);
-                            }}
-                            disabled={!newKeyName}
-                            loading={isLoading}
-                        >
-                            {editingKeyId ? t.save : t.createKey}
-                        </Button>
+                                                                    if (editingKeyId) {
+                                
+                                                                        await updateApiKey(editingKeyId, { 
+                                
+                                                                            name: newKeyName, 
+                                
+                                                                            permissions: perms as any, 
+                                
+                                                                            privacyProfileId: profileId 
+                                
+                                                                        });
+                                
+                                                                    } else {
+                                
+                                                                        await createApiKey(newKeyName, perms, profileId || undefined);
+                                
+                                                                    }
+                                
+                                                                    setIsKeyModalOpen(false);
+                                
+                                                                    setEditingKeyId(null);
+                                
+                                                                    setNewKeyName('');
+                                
+                                                                    setSelectedTagsForKey([]);
+                                
+                                                                    setSelectedPrivacyProfileId(null);
+                                
+                                                                    setExistingKeyString(null);
+                                
+                                                                }}
+                                
+                                                                disabled={!newKeyName}
+                                
+                                                                loading={isLoading}
+                                
+                                                            >
+                                
+                                                                {t.save}
+                                
+                                                            </Button>
+                                
+                                
                     </>
                 </Stack>
             </Modal>
@@ -687,6 +727,6 @@ export function SettingsPage() {
                     </Group>
                 </Stack>
             </Modal>
-        </Container>
+        </Paper>
     );
 }

@@ -192,13 +192,39 @@ interface AppState {
 
 
 
-  // Privacy Actions
+    // Privacy Actions
 
-    fetchPrivacyProfiles: () => Promise<void>;
+  
 
-    createPrivacyProfile: (name: string) => Promise<void>;
+  
 
-    updatePrivacyProfile: (id: number, name: string) => Promise<void>;
+
+
+      fetchPrivacyProfiles: () => Promise<void>;
+
+  
+
+  
+
+
+
+      createPrivacyProfile: (name: string) => Promise<PrivacyProfile | null>;
+
+  
+
+  
+
+
+
+      updatePrivacyProfile: (id: number, name: string) => Promise<void>;
+
+  
+
+  
+
+
+
+  
 
     deletePrivacyProfile: (id: number) => Promise<void>;
 
@@ -467,11 +493,14 @@ export const useAppStore = create<AppState>()(
                       body: JSON.stringify({ name })
                     });
                     if (res.ok) {
+                      const newProfile = await res.json();
                       await get().fetchPrivacyProfiles();
+                      return newProfile;
                     }
                   } catch (e) {
                     console.error("Failed to create privacy profile", e);
                   }
+                  return null;
                 },
           
                 updatePrivacyProfile: async (id, name) => {

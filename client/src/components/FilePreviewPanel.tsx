@@ -1,11 +1,12 @@
-import { Text, LoadingOverlay, Button, Group, Center, Table, Paper, ActionIcon, Stack } from '@mantine/core';
+import { Text, LoadingOverlay, Button, Group, Center, Table, Paper, Stack } from '@mantine/core';
 import { useAppStore } from '../store';
 import { useEffect, useState } from 'react';
-import { IconExternalLink, IconFileUnknown, IconArrowLeft, IconX } from '@tabler/icons-react';
+import { IconExternalLink, IconFileUnknown, IconArrowLeft } from '@tabler/icons-react';
 import { FileViewer } from './FileViewer';
+import { translations } from '../i18n';
 
 export function FilePreviewPanel() {
-    const { previewFileId, setPreviewFileId, files, searchResults, token, openFile } = useAppStore();
+    const { previewFileId, setPreviewFileId, files, searchResults, token, openFile, language } = useAppStore();
     const [zipContent, setZipContent] = useState<any[] | null>(null);
     const [selectedZipEntry, setSelectedZipEntry] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -97,7 +98,7 @@ export function FilePreviewPanel() {
                             leftSection={<IconArrowLeft size={20} />}
                             onClick={() => setSelectedZipEntry(null)}
                         >
-                            Back to Archive
+                            {translations[language].back}
                         </Button>
                         <div style={{ minWidth: 0, borderLeft: '1px solid var(--mantine-color-default-border)', paddingLeft: '1rem' }}>
                             <Text fw={700} size="lg" truncate>{entryName}</Text>
@@ -139,7 +140,7 @@ export function FilePreviewPanel() {
                         leftSection={<IconArrowLeft size={20} />}
                         onClick={() => setPreviewFileId(null)}
                     >
-                        Back
+                        {translations[language].back}
                     </Button>
                     <div style={{ minWidth: 0, borderLeft: '1px solid var(--mantine-color-default-border)', paddingLeft: '1rem' }}>
                         <Text fw={700} size="lg" truncate>{file.name}</Text>
@@ -155,9 +156,6 @@ export function FilePreviewPanel() {
                     >
                         Open System
                     </Button>
-                    <ActionIcon variant="subtle" color="gray" onClick={() => setPreviewFileId(null)}>
-                        <IconX size={20} />
-                    </ActionIcon>
                 </Group>
             </Group>
 
