@@ -9,6 +9,7 @@ import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { HomePage } from './pages/Home';
 import { SettingsPage } from './pages/Settings';
 import { translations } from './i18n';
+import { TagzillaLogo } from './components/Logo';
 
 const TAG_COLORS = [
     '#fa5252', // Red
@@ -144,18 +145,22 @@ export default function App() {
   };
 
   const logo = (
-    <Text fw={900} size="lg" style={{ cursor: 'pointer', letterSpacing: -0.5 }} onClick={() => navigate('/')}>
-      {['T', 'a', 'g', 'Z', 'i', 'l', 'l', 'a'].map((char, i) => (
-        <span key={i} style={{ color: TAG_COLORS[i % TAG_COLORS.length] }}>{char}</span>
-      ))}
-    </Text>
+    <Group gap="xs" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>
+      <TagzillaLogo size={32} showText={false} />
+      <Group gap={0}>
+        <Text fw={900} size="lg" c="green.8" style={{ letterSpacing: -0.5 }}>Tag</Text>
+        <Text fw={900} size="lg" c="blue.7" style={{ letterSpacing: -0.5 }}>Zilla</Text>
+      </Group>
+    </Group>
   );
 
   if (!isAuthenticated) {
       return (
           <Container size="xs" mt="xl">
-              <Card withBorder shadow="sm" p="lg" radius="md">
-                  <Center mb="lg">{logo}</Center>
+              <Card withBorder shadow="sm" p="xl" radius="md">
+                  <Center mb="xl">
+                    <TagzillaLogo size={120} />
+                  </Center>
                   <Stack>
                       {storeError && <Alert color="red" title="Error">{storeError}</Alert>}
                       <TextInput 
