@@ -509,20 +509,20 @@ export function SettingsPage() {
                             <Table striped highlightOnHover withTableBorder>
                                 <thead>
                                     <tr>
-                                        <th>{t.type}</th>
-                                        <th>{t.pattern}</th>
-                                        <th>{t.replacement}</th>
-                                        <th style={{ width: 80 }}>{t.active}</th>
+                                        <th style={{ textAlign: 'left' }}>{t.type}</th>
+                                        <th style={{ textAlign: 'left' }}>{t.pattern}</th>
+                                        <th style={{ textAlign: 'left' }}>{t.replacement}</th>
+                                        <th style={{ width: 80, textAlign: 'left' }}>{t.active}</th>
                                         <th style={{ width: 50 }}></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {rules.map(rule => (
                                         <tr key={rule.id}>
-                                            <td><Badge size="xs" variant="light">{rule.type}</Badge></td>
-                                            <td><Text size="sm" style={{ fontFamily: 'monospace' }}>{rule.pattern}</Text></td>
-                                            <td><Text size="sm">{rule.replacement}</Text></td>
-                                            <td>
+                                            <td style={{ textAlign: 'left' }}><Badge size="xs" variant="light">{rule.type}</Badge></td>
+                                            <td style={{ textAlign: 'left' }}><Text size="sm" style={{ fontFamily: 'monospace' }}>{rule.pattern}</Text></td>
+                                            <td style={{ textAlign: 'left' }}><Text size="sm">{rule.replacement}</Text></td>
+                                            <td style={{ textAlign: 'left' }}>
                                                 <Switch 
                                                     checked={!!rule.isActive}
                                                     onChange={async (e) => {
@@ -630,49 +630,27 @@ export function SettingsPage() {
                                     ? parseInt(selectedPrivacyProfileId) 
                                     : null;
                                 
-                                                                    if (editingKeyId) {
-                                
-                                                                        await updateApiKey(editingKeyId, { 
-                                
-                                                                            name: newKeyName, 
-                                
-                                                                            permissions: perms as any, 
-                                
-                                                                            privacyProfileId: profileId 
-                                
-                                                                        });
-                                
-                                                                    } else {
-                                
-                                                                        await createApiKey(newKeyName, perms, profileId || undefined);
-                                
-                                                                    }
-                                
-                                                                    setIsKeyModalOpen(false);
-                                
-                                                                    setEditingKeyId(null);
-                                
-                                                                    setNewKeyName('');
-                                
-                                                                    setSelectedTagsForKey([]);
-                                
-                                                                    setSelectedPrivacyProfileId(null);
-                                
-                                                                    setExistingKeyString(null);
-                                
-                                                                }}
-                                
-                                                                disabled={!newKeyName}
-                                
-                                                                loading={isLoading}
-                                
-                                                            >
-                                
-                                                                {t.save}
-                                
-                                                            </Button>
-                                
-                                
+                                if (editingKeyId) {
+                                    await updateApiKey(editingKeyId, { 
+                                        name: newKeyName, 
+                                        permissions: perms as any, 
+                                        privacyProfileId: profileId 
+                                    });
+                                } else {
+                                    await createApiKey(newKeyName, perms, profileId || undefined);
+                                }
+                                setIsKeyModalOpen(false);
+                                setEditingKeyId(null);
+                                setNewKeyName('');
+                                setSelectedTagsForKey([]);
+                                setSelectedPrivacyProfileId(null);
+                                setExistingKeyString(null);
+                            }}
+                            disabled={!newKeyName}
+                            loading={isLoading}
+                        >
+                            {t.save}
+                        </Button>
                     </>
                 </Stack>
             </Modal>
