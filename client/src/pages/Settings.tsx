@@ -1,11 +1,13 @@
 import { 
     Title, Container, Button, Group, Text, Card, Stack, 
     ActionIcon, ScrollArea, Modal, TextInput, Loader, Checkbox,
-    useMantineColorScheme, SegmentedControl, PasswordInput, MultiSelect
+    useMantineColorScheme, SegmentedControl, PasswordInput, MultiSelect,
+    Select, Switch, Table, Badge
 } from '@mantine/core';
 import { 
     IconFolder, IconPlus, IconRefresh, IconTrash, IconArrowUp, IconCheck,
-    IconSunHigh, IconMoonStars, IconArrowLeft, IconKey, IconCopy, IconEye, IconEyeOff
+    IconSunHigh, IconMoonStars, IconArrowLeft, IconKey, IconCopy,
+    IconShieldLock, IconSettings, IconList, IconEdit
 } from '@tabler/icons-react';
 import { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
@@ -17,7 +19,9 @@ export function SettingsPage() {
         scopes, addScope, refreshScope, deleteScope, token, 
         activeScopeIds, toggleScopeActive, language, user,
         changePassword, isLoading, tags,
-        apiKeys, fetchApiKeys, createApiKey, deleteApiKey
+        apiKeys, fetchApiKeys, createApiKey, deleteApiKey, updateApiKey,
+        privacyProfiles, fetchPrivacyProfiles, createPrivacyProfile, deletePrivacyProfile,
+        fetchPrivacyRules, addPrivacyRule, deletePrivacyRule, togglePrivacyRule, updatePrivacyProfile
     } = useAppStore();
 
     const t = translations[language];
@@ -30,10 +34,21 @@ export function SettingsPage() {
 
     // API Key State
     const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+    const [editingKeyId, setEditingKeyId] = useState<number | null>(null);
     const [newKeyName, setNewKeyName] = useState('');
     const [selectedTagsForKey, setSelectedTagsForKey] = useState<string[]>([]);
-    const [createdKey, setCreatedKey] = useState<string | null>(null);
-    const [revealedKeyIds, setRevealedKeyIds] = useState<number[]>([]);
+    const [selectedPrivacyProfileId, setSelectedPrivacyProfileId] = useState<string | null>(null);
+    const [existingKeyString, setExistingKeyString] = useState<string | null>(null);
+
+    // Privacy State
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+    const [newProfileName, setNewProfileName] = useState('');
+    
+    const [activeProfileId, setActiveProfileId] = useState<number | null>(null);
+    const [activeProfileName, setActiveProfileName] = useState('');
+    const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
+    const [rules, setRules] = useState<any[]>([]);
+    const [newRule, setNewRule] = useState({ type: 'LITERAL', pattern: '', replacement: '[REDACTED]' });
 
     // Directory Browser State
     const [isBrowserOpen, setIsBrowserOpen] = useState(false);
@@ -268,39 +283,9 @@ export function SettingsPage() {
                     {apiKeys.map(key => (
                         <Group key={key.id} justify="space-between" p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: '4px' }}>
                             <Stack gap={4} style={{ flex: 1 }}>
-                                <Group justify="space-between">
-                                    <Group gap="xs">
-                                        <IconKey size={20} color="gray" />
-                                        <Text size="sm" fw={500}>{key.name}</Text>
-                                    </Group>
-                                    <Group gap={4}>
-                                        <Text size="xs" family="monospace" c="dimmed">
-                                            {revealedKeyIds.includes(key.id) ? key.key : '••••••••••••••••••••'}
-                                        </Text>
-                                        <ActionIcon 
-                                            size="sm" 
-                                            variant="subtle" 
-                                            onClick={() => {
-                                                setRevealedKeyIds(prev => 
-                                                    prev.includes(key.id) ? prev.filter(id => id !== key.id) : [...prev, key.id]
-                                                );
-                                            }}
-                                        >
-                                            {revealedKeyIds.includes(key.id) ? <IconEyeOff size={14} /> : <IconEye size={14} />}
-                                        </ActionIcon>
-                                        <ActionIcon 
-                                            size="sm" 
-                                            variant="subtle" 
-                                            onClick={() => {
-                                                if (key.key) {
-                                                    navigator.clipboard.writeText(key.key);
-                                                    alert('Key copied');
-                                                }
-                                            }}
-                                        >
-                                            <IconCopy size={14} />
-                                        </ActionIcon>
-                                    </Group>
+                                <Group gap="xs">
+                                    <IconKey size={20} color="gray" />
+                                    <Text size="sm" fw={500}>{key.name}</Text>
                                 </Group>
                                 <Group gap="xs">
                                     <Text size="xs" c="dimmed">
@@ -316,82 +301,339 @@ export function SettingsPage() {
                                             return p;
                                         }).join(', ')}
                                     </Text>
+                                    {(key as any).privacyProfileName && (
+                                        <Badge variant="outline" size="xs" color="blue" leftSection={<IconShieldLock size={10} />}>
+                                            {(key as any).privacyProfileName}
+                                        </Badge>
+                                    )}
                                 </Group>
                             </Stack>
-                            <ActionIcon 
-                                variant="light" 
-                                color="red"
-                                onClick={() => { 
-                                    if(confirm('Delete this API key?')) deleteApiKey(key.id); 
-                                }}
-                            >
-                                <IconTrash size={16} />
-                            </ActionIcon>
+                            <Group gap="xs">
+                                <ActionIcon 
+                                    variant="light" 
+                                    onClick={() => {
+                                        setEditingKeyId(key.id);
+                                        setNewKeyName(key.name);
+                                        setSelectedTagsForKey(key.permissions.filter(p => p.startsWith('tag:')).map(p => p.split(':')[1]));
+                                        setSelectedPrivacyProfileId(key.privacyProfileId ? String(key.privacyProfileId) : 'none');
+                                        setExistingKeyString(key.key || null);
+                                        setCreatedKey(null);
+                                        setIsKeyModalOpen(true);
+                                    }}
+                                >
+                                    <IconSettings size={16} />
+                                </ActionIcon>
+                                <ActionIcon 
+                                    variant="light" 
+                                    color="red"
+                                    onClick={() => { 
+                                        if(confirm('Delete this API key?')) deleteApiKey(key.id); 
+                                    }}
+                                >
+                                    <IconTrash size={16} />
+                                </ActionIcon>
+                            </Group>
+                        </Group>
+                    ))}
+                </Stack>
+            </Card>
+
+            <Title order={3} mt="xl" mb="md">{t.privacy}</Title>
+            <Card withBorder shadow="sm" radius="md">
+                <Card.Section withBorder inheritPadding py="xs">
+                    <Group justify="space-between">
+                        <Stack gap={0}>
+                            <Text fw={500}>{t.privacy}</Text>
+                            <Text size="xs" c="dimmed">{t.privacyDesc}</Text>
+                        </Stack>
+                        <Button 
+                            leftSection={<IconPlus size={16} />} 
+                            variant="light" 
+                            size="xs" 
+                            onClick={() => {
+                                setNewProfileName('');
+                                setIsProfileModalOpen(true);
+                            }}
+                        >
+                            {t.addScope}
+                        </Button>
+                    </Group>
+                </Card.Section>
+
+                <Stack gap="xs" mt="md">
+                    {privacyProfiles.length === 0 && (
+                        <Text c="dimmed" ta="center" py="md">No privacy profiles created yet.</Text>
+                    )}
+                    
+                    {privacyProfiles.map(profile => (
+                        <Group key={profile.id} justify="space-between" p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: '4px' }}>
+                            <Group>
+                                <IconShieldLock size={20} color="gray" />
+                                <div>
+                                    <Text size="sm" fw={500}>{profile.name}</Text>
+                                    <Text size="xs" c="dimmed">{profile.ruleCount} {t.rules}</Text>
+                                </div>
+                            </Group>
+                            <Group gap="xs">
+                                <ActionIcon 
+                                    variant="light" 
+                                    onClick={async () => {
+                                        const r = await fetchPrivacyRules(profile.id);
+                                        setRules(r);
+                                        setActiveProfileId(profile.id);
+                                        setActiveProfileName(profile.name);
+                                        setIsRulesModalOpen(true);
+                                    }}
+                                >
+                                    <IconSettings size={16} />
+                                </ActionIcon>
+                                <ActionIcon 
+                                    variant="light" 
+                                    color="red"
+                                    onClick={() => { 
+                                        if(confirm('Delete this privacy profile?')) deletePrivacyProfile(profile.id); 
+                                    }}
+                                >
+                                    <IconTrash size={16} />
+                                </ActionIcon>
+                            </Group>
                         </Group>
                     ))}
                 </Stack>
             </Card>
 
             <Modal 
-                opened={isKeyModalOpen} 
-                onClose={() => setIsKeyModalOpen(false)} 
-                title={t.createKey}
+                opened={isProfileModalOpen} 
+                onClose={() => {
+                    setIsProfileModalOpen(false);
+                }} 
+                title={t.createProfile}
             >
                 <Stack>
-                    {!createdKey ? (
-                        <>
-                            <TextInput 
-                                label={t.keyName} 
-                                placeholder="e.g. Home Automation"
-                                value={newKeyName}
-                                onChange={(e) => setNewKeyName(e.currentTarget.value)}
-                                autoFocus
+                    <TextInput 
+                        label={t.profileName} 
+                        value={newProfileName}
+                        onChange={(e) => setNewProfileName(e.currentTarget.value)}
+                        autoFocus
+                    />
+                    <Button 
+                        onClick={async () => {
+                            await createPrivacyProfile(newProfileName);
+                            setIsProfileModalOpen(false);
+                        }}
+                        disabled={!newProfileName}
+                    >
+                        {t.save}
+                    </Button>
+                </Stack>
+            </Modal>
+
+            <Modal 
+                opened={isRulesModalOpen} 
+                onClose={() => setIsRulesModalOpen(false)} 
+                title={t.rules}
+                size="xl"
+            >
+                <Stack>
+                    <Group align="flex-end">
+                        <TextInput 
+                            label={t.profileName}
+                            value={activeProfileName}
+                            onChange={(e) => setActiveProfileName(e.currentTarget.value)}
+                            style={{ flex: 1 }}
+                        />
+                        <Button 
+                            variant="light"
+                            onClick={async () => {
+                                if (activeProfileId) {
+                                    await updatePrivacyProfile(activeProfileId, activeProfileName);
+                                }
+                            }}
+                        >
+                            <IconCheck size={16} />
+                        </Button>
+                    </Group>
+
+                    <Card withBorder p="sm">
+                        <Text fw={500} size="sm" mb="xs">{t.addRule}</Text>
+                        <Group align="flex-end">
+                            <Select 
+                                label={t.type}
+                                data={[
+                                    { value: 'LITERAL', label: t.literal },
+                                    { value: 'REGEX', label: t.regex }
+                                ]}
+                                value={newRule.type}
+                                onChange={(val) => setNewRule({...newRule, type: val || 'LITERAL'})}
+                                style={{ width: 150 }}
                             />
-                            <MultiSelect 
-                                label={t.tags}
-                                placeholder="Select tags this key can access"
-                                data={tags.map(t => ({ value: String(t.id), label: t.name }))}
-                                value={selectedTagsForKey}
-                                onChange={setSelectedTagsForKey}
+                            <TextInput 
+                                label={t.pattern}
+                                placeholder="e.g. My Company Name"
+                                value={newRule.pattern}
+                                onChange={(e) => setNewRule({...newRule, pattern: e.currentTarget.value})}
+                                style={{ flex: 1 }}
+                            />
+                            <TextInput 
+                                label={t.replacement}
+                                value={newRule.replacement}
+                                onChange={(e) => setNewRule({...newRule, replacement: e.currentTarget.value})}
+                                style={{ width: 150 }}
                             />
                             <Button 
                                 onClick={async () => {
-                                    const perms = selectedTagsForKey.length > 0 
-                                        ? selectedTagsForKey.map(id => `tag:${id}`).join(',')
-                                        : 'files:read,tags:read';
-                                    const key = await createApiKey(newKeyName, perms);
-                                    if (key) setCreatedKey(key.key || null);
+                                    if (activeProfileId) {
+                                        await addPrivacyRule(activeProfileId, newRule as any);
+                                        const r = await fetchPrivacyRules(activeProfileId);
+                                        setRules(r);
+                                        setNewRule({ type: 'LITERAL', pattern: '', replacement: '[REDACTED]' });
+                                    }
                                 }}
-                                disabled={!newKeyName}
-                                loading={isLoading}
+                                disabled={!newRule.pattern}
                             >
-                                {t.createKey}
+                                <IconPlus size={16} />
                             </Button>
-                        </>
-                    ) : (
-                        <Stack>
-                            <Text size="sm" c="green" fw={500}>{t.keyCreated}</Text>
+                        </Group>
+                    </Card>
+
+                    <Table striped highlightOnHover withBorder>
+                        <thead>
+                            <tr>
+                                <th>{t.type}</th>
+                                <th>{t.pattern}</th>
+                                <th>{t.replacement}</th>
+                                <th style={{ width: 80 }}>{t.active}</th>
+                                <th style={{ width: 50 }}></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rules.map(rule => (
+                                <tr key={rule.id}>
+                                    <td><Badge size="xs" variant="light">{rule.type}</Badge></td>
+                                    <td><Text size="sm" style={{ fontFamily: 'monospace' }}>{rule.pattern}</Text></td>
+                                    <td><Text size="sm">{rule.replacement}</Text></td>
+                                    <td>
+                                        <Switch 
+                                            checked={!!rule.isActive}
+                                            onChange={async (e) => {
+                                                await togglePrivacyRule(rule.id, e.currentTarget.checked, rule.profileId);
+                                                const r = await fetchPrivacyRules(rule.profileId);
+                                                setRules(r);
+                                            }}
+                                            size="xs"
+                                        />
+                                    </td>
+                                    <td>
+                                        <ActionIcon 
+                                            variant="subtle" 
+                                            color="red" 
+                                            onClick={async () => {
+                                                await deletePrivacyRule(rule.id, rule.profileId);
+                                                const r = await fetchPrivacyRules(rule.profileId);
+                                                setRules(r);
+                                            }}
+                                        >
+                                            <IconTrash size={14} />
+                                        </ActionIcon>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </Table>
+                </Stack>
+            </Modal>
+
+            <Modal 
+                opened={isKeyModalOpen} 
+                onClose={() => {
+                    setIsKeyModalOpen(false);
+                    setEditingKeyId(null);
+                    setNewKeyName('');
+                    setSelectedTagsForKey([]);
+                    setSelectedPrivacyProfileId(null);
+                    setExistingKeyString(null);
+                }} 
+                title={editingKeyId ? t.editTag : t.createKey}
+            >
+                <Stack>
+                    <>
+                        {editingKeyId && existingKeyString && (
                             <Group gap="xs">
                                 <TextInput 
-                                    value={createdKey} 
+                                    label="API Key"
+                                    value={existingKeyString} 
                                     readOnly 
                                     style={{ flex: 1 }}
-                                    styles={{ input: { fontFamily: 'monospace' } }}
+                                    styles={{ input: { fontFamily: 'monospace', fontSize: '12px' } }}
                                 />
                                 <ActionIcon 
                                     size="lg" 
                                     variant="light"
+                                    mt={24}
                                     onClick={() => {
-                                        navigator.clipboard.writeText(createdKey);
+                                        navigator.clipboard.writeText(existingKeyString);
                                         alert('Copied to clipboard');
                                     }}
                                 >
                                     <IconCopy size={20} />
                                 </ActionIcon>
                             </Group>
-                            <Button onClick={() => setIsKeyModalOpen(false)}>{t.save}</Button>
-                        </Stack>
-                    )}
+                        )}
+                        <TextInput 
+                            label={t.keyName} 
+                            placeholder="e.g. Home Automation"
+                            value={newKeyName}
+                            onChange={(e) => setNewKeyName(e.currentTarget.value)}
+                            autoFocus
+                        />
+                        <MultiSelect 
+                            label={t.tags}
+                            placeholder="Select tags this key can access"
+                            data={tags.map(t => ({ value: String(t.id), label: t.name }))}
+                            value={selectedTagsForKey}
+                            onChange={setSelectedTagsForKey}
+                        />
+                        <Select 
+                            label={t.privacyProfile}
+                            placeholder={t.noProfile}
+                            data={[
+                                { value: 'none', label: t.noProfile },
+                                ...privacyProfiles.map(p => ({ value: String(p.id), label: p.name }))
+                            ]}
+                            value={selectedPrivacyProfileId}
+                            onChange={setSelectedPrivacyProfileId}
+                        />
+                        <Button 
+                            onClick={async () => {
+                                const perms = selectedTagsForKey.length > 0 
+                                    ? selectedTagsForKey.map(id => `tag:${id}`).join(',')
+                                    : 'files:read,tags:read';
+                                const profileId = selectedPrivacyProfileId && selectedPrivacyProfileId !== 'none' 
+                                    ? parseInt(selectedPrivacyProfileId) 
+                                    : null;
+                                
+                                if (editingKeyId) {
+                                    await updateApiKey(editingKeyId, { 
+                                        name: newKeyName, 
+                                        permissions: perms as any, 
+                                        privacyProfileId: profileId 
+                                    });
+                                } else {
+                                    await createApiKey(newKeyName, perms, profileId || undefined);
+                                }
+                                setIsKeyModalOpen(false);
+                                setEditingKeyId(null);
+                                setNewKeyName('');
+                                setSelectedTagsForKey([]);
+                                setSelectedPrivacyProfileId(null);
+                                setExistingKeyString(null);
+                            }}
+                            disabled={!newKeyName}
+                            loading={isLoading}
+                        >
+                            {editingKeyId ? t.save : t.createKey}
+                        </Button>
+                    </>
                 </Stack>
             </Modal>
 

@@ -88,7 +88,26 @@ if (isMainThread) {
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         lastUsedAt DATETIME,
         userId INTEGER NOT NULL,
+        privacyProfileId INTEGER,
+        FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE,
+        FOREIGN KEY (privacyProfileId) REFERENCES PrivacyProfile(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS PrivacyProfile (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        userId INTEGER NOT NULL,
         FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS PrivacyRule (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profileId INTEGER NOT NULL,
+        type TEXT NOT NULL, -- 'LITERAL' or 'REGEX'
+        pattern TEXT NOT NULL,
+        replacement TEXT NOT NULL,
+        isActive BOOLEAN NOT NULL DEFAULT 1,
+        FOREIGN KEY (profileId) REFERENCES PrivacyProfile(id) ON DELETE CASCADE
       );
 
       CREATE VIRTUAL TABLE IF NOT EXISTS FileContentIndex USING fts5(
@@ -109,6 +128,14 @@ if (isMainThread) {
     if (!hasIsEditable) {
         db.prepare("ALTER TABLE Tag ADD COLUMN isEditable BOOLEAN NOT NULL DEFAULT 1").run();
         console.log("Migration: Added 'isEditable' column to Tag table");
+    }
+
+    // Migration: Add privacyProfileId to ApiKey if not exists
+    const apiKeyColumns = db.pragma('table_info(ApiKey)') as any[];
+    const hasPrivacyProfileId = apiKeyColumns.some(col => col.name === 'privacyProfileId');
+    if (!hasPrivacyProfileId) {
+        db.prepare("ALTER TABLE ApiKey ADD COLUMN privacyProfileId INTEGER").run();
+        console.log("Migration: Added 'privacyProfileId' column to ApiKey table");
     }
 
     createDefaultUserAndTags();

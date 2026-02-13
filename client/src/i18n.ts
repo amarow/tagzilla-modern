@@ -64,7 +64,21 @@ export const translations = {
     keyCreated: "API Key created! Please copy it now, it won't be shown again:",
     lastUsed: "Last used",
     never: "Never",
-    copy: "Copy"
+    copy: "Copy",
+    privacy: "Privacy & Anonymization",
+    privacyDesc: "Create profiles to redact sensitive information (names, emails, etc.) before data is sent via API.",
+    createProfile: "Create Privacy Profile",
+    profileName: "Profile Name",
+    rules: "Rules",
+    addRule: "Add Rule",
+    pattern: "Search Pattern",
+    replacement: "Replacement",
+    type: "Type",
+    literal: "Text (Literal)",
+    regex: "Regex",
+    active: "Active",
+    privacyProfile: "Privacy Profile",
+    noProfile: "None (Full Access)"
   },
   de: {
     searchPlaceholder: "Dateien suchen...",
@@ -131,6 +145,20 @@ export const translations = {
     keyCreated: "API Key erstellt! Bitte jetzt kopieren, er wird nicht erneut angezeigt:",
     lastUsed: "Zuletzt benutzt",
     never: "Nie",
-    copy: "Kopieren"
+    copy: "Kopieren",
+    privacy: "Datenschutz & Anonymisierung",
+    privacyDesc: "Erstelle Profile, um sensible Daten (Namen, E-Mails etc.) zu schwärzen, bevor sie über die API versendet werden.",
+    createProfile: "Datenschutz-Profil erstellen",
+    profileName: "Profil-Name",
+    rules: "Regeln",
+    addRule: "Regel hinzufügen",
+    pattern: "Suchmuster",
+    replacement: "Ersetzung",
+    type: "Typ",
+    literal: "Text (Literal)",
+    regex: "Regex",
+    active: "Aktiv",
+    privacyProfile: "Datenschutz-Profil",
+    noProfile: "Keines (Vollzugriff)"
   }
 };

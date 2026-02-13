@@ -17,6 +17,7 @@ export interface AuthRequest extends Request {
     id: number;
     name: string;
     permissions: string[];
+    privacyProfileId: number | null;
   };
 }
 
@@ -97,7 +98,8 @@ export const authenticateApiKey = async (req: Request, res: Response, next: Next
   (req as AuthRequest).apiKey = {
     id: apiKeyRecord.id,
     name: apiKeyRecord.name,
-    permissions: apiKeyRecord.permissions.split(',')
+    permissions: apiKeyRecord.permissions.split(','),
+    privacyProfileId: apiKeyRecord.privacyProfileId
   };
   
   next();

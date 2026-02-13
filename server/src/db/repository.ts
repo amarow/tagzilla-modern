@@ -583,21 +583,28 @@ export const searchRepository = {
 };
 
 export const apiKeyRepository = {
-  async create(userId: number, name: string, key: string, permissions: string) {
-    const stmt = db.prepare('INSERT INTO ApiKey (userId, name, key, permissions) VALUES (?, ?, ?, ?)');
-    const info = stmt.run(userId, name, key, permissions);
+  async create(userId: number, name: string, key: string, permissions: string, privacyProfileId?: number) {
+    const stmt = db.prepare('INSERT INTO ApiKey (userId, name, key, permissions, privacyProfileId) VALUES (?, ?, ?, ?, ?)');
+    const info = stmt.run(userId, name, key, permissions, privacyProfileId || null);
     return { 
       id: Number(info.lastInsertRowid), 
       userId, 
       name, 
       key, 
       permissions: permissions.split(','), 
+      privacyProfileId: privacyProfileId || null,
       createdAt: new Date() 
     };
   },
 
   async getAll(userId: number) {
-    const stmt = db.prepare('SELECT id, name, key, permissions, createdAt, lastUsedAt FROM ApiKey WHERE userId = ? ORDER BY createdAt DESC');
+    const stmt = db.prepare(`
+      SELECT k.*, p.name as privacyProfileName 
+      FROM ApiKey k 
+      LEFT JOIN PrivacyProfile p ON k.privacyProfileId = p.id
+      WHERE k.userId = ? 
+      ORDER BY k.createdAt DESC
+    `);
     const rows = stmt.all(userId) as any[];
     return rows.map(row => ({
       ...row,
@@ -620,5 +627,77 @@ export const apiKeyRepository = {
       return apiKey;
     }
     return null;
+  },
+
+  async update(userId: number, id: number, updates: { name?: string, permissions?: string, privacyProfileId?: number | null }) {
+    const fields = [];
+    const values = [];
+
+    if (updates.name !== undefined) {
+      fields.push('name = ?');
+      values.push(updates.name);
+    }
+    if (updates.permissions !== undefined) {
+      fields.push('permissions = ?');
+      values.push(updates.permissions);
+    }
+    if (updates.privacyProfileId !== undefined) {
+      fields.push('privacyProfileId = ?');
+      values.push(updates.privacyProfileId);
+    }
+
+    if (fields.length === 0) return;
+
+    values.push(id);
+    values.push(userId);
+
+    const stmt = db.prepare(`UPDATE ApiKey SET ${fields.join(', ')} WHERE id = ? AND userId = ?`);
+    stmt.run(...values);
+  }
+};
+
+export const privacyRepository = {
+  async createProfile(userId: number, name: string) {
+    const stmt = db.prepare('INSERT INTO PrivacyProfile (userId, name) VALUES (?, ?)');
+    const info = stmt.run(userId, name);
+    return { id: Number(info.lastInsertRowid), userId, name };
+  },
+
+  async getProfiles(userId: number) {
+    const stmt = db.prepare(`
+      SELECT p.*, COUNT(r.id) as ruleCount 
+      FROM PrivacyProfile p 
+      LEFT JOIN PrivacyRule r ON p.id = r.profileId 
+      WHERE p.userId = ? 
+      GROUP BY p.id
+    `);
+    return stmt.all(userId);
+  },
+
+  async deleteProfile(userId: number, id: number) {
+    const stmt = db.prepare('DELETE FROM PrivacyProfile WHERE id = ? AND userId = ?');
+    const info = stmt.run(id, userId);
+    return info.changes > 0;
+  },
+
+  async addRule(profileId: number, rule: { type: string, pattern: string, replacement: string }) {
+    const stmt = db.prepare('INSERT INTO PrivacyRule (profileId, type, pattern, replacement) VALUES (?, ?, ?, ?)');
+    const info = stmt.run(profileId, rule.type, rule.pattern, rule.replacement);
+    return { id: Number(info.lastInsertRowid), profileId, ...rule, isActive: 1 };
+  },
+
+  async getRules(profileId: number) {
+    const stmt = db.prepare('SELECT * FROM PrivacyRule WHERE profileId = ?');
+    return stmt.all(profileId);
+  },
+
+  async deleteRule(id: number) {
+    const stmt = db.prepare('DELETE FROM PrivacyRule WHERE id = ?');
+    stmt.run(id);
+  },
+
+  async toggleRule(id: number, isActive: boolean) {
+    const stmt = db.prepare('UPDATE PrivacyRule SET isActive = ? WHERE id = ?');
+    stmt.run(isActive ? 1 : 0, id);
   }
 };

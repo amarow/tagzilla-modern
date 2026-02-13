@@ -2,9 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import { db } from './db/client';
 import { crawlerService } from './services/crawler';
-import { scopeRepository, fileRepository, tagRepository, appStateRepository, searchRepository, apiKeyRepository } from './db/repository';
+import { scopeRepository, fileRepository, tagRepository, appStateRepository, searchRepository, apiKeyRepository, privacyRepository } from './db/repository';
 import { exec, spawn } from 'child_process';
 import { authService, authenticateToken, authenticateApiKey, AuthRequest } from './auth';
+import { privacyService } from './services/privacy';
 
 // Middleware to allow either JWT or API Key
 const authenticateAny = (req: any, res: any, next: any) => {
@@ -145,11 +146,11 @@ app.get('/api/keys', authenticateToken, async (req, res) => {
 app.post('/api/keys', authenticateToken, async (req, res) => {
     try {
         const userId = (req as AuthRequest).user!.id;
-        const { name, permissions } = req.body;
+        const { name, permissions, privacyProfileId } = req.body;
         if (!name) return res.status(400).json({ error: 'Name is required' });
         
         const key = authService.generateApiKey();
-        const newKey = await apiKeyRepository.create(userId, name, key, permissions || 'files:read,tags:read');
+        const newKey = await apiKeyRepository.create(userId, name, key, permissions || 'files:read,tags:read', privacyProfileId);
         res.json(newKey);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -161,6 +162,112 @@ app.delete('/api/keys/:id', authenticateToken, async (req, res) => {
         const userId = (req as AuthRequest).user!.id;
         const { id } = req.params;
         await apiKeyRepository.delete(userId, Number(id));
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.patch('/api/keys/:id', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const { id } = req.params;
+        const { name, permissions, privacyProfileId } = req.body;
+        await apiKeyRepository.update(userId, Number(id), { name, permissions, privacyProfileId });
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Privacy Profiles Management
+app.get('/api/privacy/profiles', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const profiles = await privacyRepository.getProfiles(userId);
+        res.json(profiles);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/privacy/profiles', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: 'Name is required' });
+        const profile = await privacyRepository.createProfile(userId, name);
+        res.json(profile);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/privacy/profiles/:id', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const { id } = req.params;
+        await privacyRepository.deleteProfile(userId, Number(id));
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.patch('/api/privacy/profiles/:id', authenticateToken, async (req, res) => {
+    try {
+        const userId = (req as AuthRequest).user!.id;
+        const { id } = req.params;
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: 'Name is required' });
+        
+        const stmt = db.prepare('UPDATE PrivacyProfile SET name = ? WHERE id = ? AND userId = ?');
+        stmt.run(name, id, userId);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/privacy/profiles/:id/rules', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const rules = await privacyRepository.getRules(Number(id));
+        res.json(rules);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/privacy/profiles/:id/rules', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { type, pattern, replacement } = req.body;
+        if (!type || !pattern || replacement === undefined) {
+            return res.status(400).json({ error: 'Missing rule fields' });
+        }
+        const rule = await privacyRepository.addRule(Number(id), { type, pattern, replacement });
+        res.json(rule);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/privacy/rules/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        await privacyRepository.deleteRule(Number(id));
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.patch('/api/privacy/rules/:id/toggle', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { isActive } = req.body;
+        await privacyRepository.toggleRule(Number(id), isActive);
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -809,6 +916,11 @@ app.get('/api/v1/files/:id/text', authenticateAny, async (req, res) => {
             }
         } else {
             text = await fs.readFile(file.path, 'utf8');
+        }
+
+        // 5. Apply Redaction if a profile is assigned to the API Key
+        if (apiKey && apiKey.privacyProfileId) {
+            text = await privacyService.redactText(text, apiKey.privacyProfileId);
         }
 
         res.setHeader('Content-Type', 'text/plain');
