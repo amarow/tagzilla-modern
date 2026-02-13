@@ -1,11 +1,9 @@
 import { Request, Response } from 'express';
 import { fileRepository, tagRepository, searchRepository } from '../db/repository';
 import { privacyService } from '../services/privacy';
+import { fileService } from '../services/file.service';
 import { db } from '../db/client';
 import { AuthRequest } from '../auth';
-import * as fs from 'fs/promises';
-import AdmZip from 'adm-zip';
-import mammoth from 'mammoth';
 
 export const PublicController = {
     async getFiles(req: Request, res: Response) {
@@ -73,21 +71,7 @@ export const PublicController = {
                 if (!tagCheck) return res.status(403).json({ error: 'Access denied' });
             }
 
-            const ext = file.extension.toLowerCase();
-            let text = "";
-            if (ext === '.docx') {
-                const result = await mammoth.extractRawText({ path: file.path });
-                text = result.value;
-            } else if (ext === '.odt') {
-                const zip = new AdmZip(file.path);
-                const contentXml = zip.readAsText('content.xml');
-                if (contentXml) {
-                    text = contentXml.replace(/<text:p[^>]*>/g, '\n\n')
-                                     .replace(/<[^>]+>/g, '').trim();
-                }
-            } else {
-                text = await fs.readFile(file.path, 'utf8');
-            }
+            let text = await fileService.extractText(file.path, file.extension);
 
             if (apiKey && apiKey.privacyProfileId) {
                 text = await privacyService.redactText(text, apiKey.privacyProfileId);

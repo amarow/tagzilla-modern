@@ -1,0 +1,92 @@
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import AdmZip from 'adm-zip';
+import heicConvert from 'heic-convert';
+import mammoth from 'mammoth';
+const pdf = require('pdf-parse');
+
+export const fileService = {
+    async extractText(filePath: string, extension: string): Promise<string> {
+        const ext = extension.toLowerCase();
+        
+        try {
+            if (ext === '.pdf') {
+                const dataBuffer = await fs.readFile(filePath);
+                const data = await pdf(dataBuffer);
+                return data.text;
+            }
+
+            if (ext === '.docx') {
+                const result = await mammoth.extractRawText({ path: filePath });
+                return result.value;
+            } 
+            
+            if (ext === '.odt') {
+                const zip = new AdmZip(filePath);
+                const contentXml = zip.readAsText('content.xml');
+                if (contentXml) {
+                    let formatted = contentXml;
+                    formatted = formatted.replace(/<text:p[^>]*>/g, '\n\n')
+                                         .replace(/<text:h[^>]*text:outline-level="1"[^>]*>/g, '\n\n# ')
+                                         .replace(/<text:h[^>]*text:outline-level="2"[^>]*>/g, '\n\n## ')
+                                         .replace(/<text:h[^>]*text:outline-level="3"[^>]*>/g, '\n\n### ')
+                                         .replace(/<text:h[^>]*>/g, '\n\n# ')
+                                         .replace(/<text:tab\/>/g, '    ')
+                                         .replace(/<text:line-break\/>/g, '\n');
+                    return formatted.replace(/<[^>]+>/g, '').trim();
+                }
+                return "";
+            }
+
+            // Default: Read as plain text
+            return await fs.readFile(filePath, 'utf8');
+        } catch (e) {
+            console.error(`Error extracting text from ${filePath}:`, e);
+            return "";
+        }
+    },
+
+    async convertHeicToJpeg(filePath: string): Promise<Buffer> {
+        const inputBuffer = await fs.readFile(filePath);
+        const outputBuffer = await heicConvert({
+            buffer: inputBuffer as any,
+            format: 'JPEG',
+            quality: 0.8
+        });
+        return Buffer.from(outputBuffer);
+    },
+
+    async getZipEntries(filePath: string) {
+        const zip = new AdmZip(filePath);
+        return zip.getEntries()
+            .filter(entry => !entry.isDirectory)
+            .map(entry => ({
+                name: entry.entryName,
+                size: entry.header.size,
+                compressedSize: entry.header.compressedSize,
+                isDirectory: entry.isDirectory,
+                path: entry.entryName,
+                method: entry.header.method
+            }));
+    },
+
+    async getZipEntryData(filePath: string, entryPath: string): Promise<{ buffer: Buffer, contentType: string }> {
+        const zip = new AdmZip(filePath);
+        const entry = zip.getEntry(entryPath);
+
+        if (!entry || entry.isDirectory) {
+            throw new Error('Entry not found or is a directory');
+        }
+
+        const buffer = entry.getData();
+        const ext = path.extname(entry.entryName).toLowerCase();
+        
+        let contentType = 'application/octet-stream';
+        if (['.txt', '.md', '.json', '.js', '.ts', '.css', '.html', '.xml'].includes(ext)) contentType = 'text/plain';
+        if (['.jpg', '.jpeg'].includes(ext)) contentType = 'image/jpeg';
+        if (['.png'].includes(ext)) contentType = 'image/png';
+        if (['.pdf'].includes(ext)) contentType = 'application/pdf';
+
+        return { buffer, contentType };
+    }
+};

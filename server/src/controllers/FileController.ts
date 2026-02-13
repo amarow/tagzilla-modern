@@ -3,11 +3,7 @@ import { fileRepository } from '../db/repository';
 import { db } from '../db/client';
 import { spawn } from 'child_process';
 import { AuthRequest } from '../auth';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import AdmZip from 'adm-zip';
-import heicConvert from 'heic-convert';
-import mammoth from 'mammoth';
+import { fileService } from '../services/file.service';
 
 export const FileController = {
     async getAll(req: Request, res: Response) {
@@ -29,30 +25,7 @@ export const FileController = {
             
             if (!file) return res.status(404).json({ error: 'File not found' });
 
-            const ext = file.extension.toLowerCase();
-            let text = "";
-
-            if (ext === '.docx') {
-                const result = await mammoth.extractRawText({ path: file.path });
-                text = result.value;
-            } else if (ext === '.odt') {
-                const zip = new AdmZip(file.path);
-                const contentXml = zip.readAsText('content.xml');
-                if (contentXml) {
-                    let formatted = contentXml;
-                    formatted = formatted.replace(/<text:p[^>]*>/g, '\n\n')
-                                         .replace(/<text:h[^>]*text:outline-level="1"[^>]*>/g, '\n\n# ')
-                                         .replace(/<text:h[^>]*text:outline-level="2"[^>]*>/g, '\n\n## ')
-                                         .replace(/<text:h[^>]*text:outline-level="3"[^>]*>/g, '\n\n### ')
-                                         .replace(/<text:h[^>]*>/g, '\n\n# ')
-                                         .replace(/<text:tab\/>/g, '    ')
-                                         .replace(/<text:line-break\/>/g, '\n');
-                    text = formatted.replace(/<[^>]+>/g, '').trim();
-                }
-            } else {
-                text = await fs.readFile(file.path, 'utf8');
-            }
-
+            const text = await fileService.extractText(file.path, file.extension);
             res.setHeader('Content-Type', 'text/plain');
             res.send(text);
         } catch (e: any) {
@@ -71,10 +44,9 @@ export const FileController = {
 
             if (file.extension.toLowerCase() === '.heic' || file.extension.toLowerCase() === '.heif') {
                 try {
-                    const inputBuffer = await fs.readFile(file.path);
-                    const outputBuffer = await heicConvert({ buffer: inputBuffer as any, format: 'JPEG', quality: 0.8 });
+                    const buffer = await fileService.convertHeicToJpeg(file.path);
                     res.setHeader('Content-Type', 'image/jpeg');
-                    res.send(Buffer.from(outputBuffer));
+                    res.send(buffer);
                     return;
                 } catch (err) {
                     console.error(`Failed to convert HEIC: ${err}`);
@@ -97,11 +69,7 @@ export const FileController = {
             const file = db.prepare(sql).get(id, userId) as { path: string };
             if (!file) return res.status(404).json({ error: 'File not found' });
 
-            const zip = new AdmZip(file.path);
-            const entries = zip.getEntries().filter(entry => !entry.isDirectory).map(entry => ({
-                name: entry.entryName, size: entry.header.size, compressedSize: entry.header.compressedSize,
-                isDirectory: entry.isDirectory, path: entry.entryName, method: entry.header.method
-            }));
+            const entries = await fileService.getZipEntries(file.path);
             res.json(entries);
         } catch (e: any) {
             res.status(500).json({ error: e.message });
@@ -119,18 +87,7 @@ export const FileController = {
             const file = db.prepare(sql).get(id, userId) as { path: string };
             if (!file) return res.status(404).json({ error: 'File not found' });
 
-            const zip = new AdmZip(file.path);
-            const entry = zip.getEntry(entryPath);
-            if (!entry || entry.isDirectory) return res.status(404).json({ error: 'Entry not found' });
-
-            const buffer = entry.getData();
-            const ext = path.extname(entry.entryName).toLowerCase();
-            let contentType = 'application/octet-stream';
-            if (['.txt', '.md', '.json', '.js', '.ts', '.css', '.html', '.xml'].includes(ext)) contentType = 'text/plain';
-            if (['.jpg', '.jpeg'].includes(ext)) contentType = 'image/jpeg';
-            if (['.png'].includes(ext)) contentType = 'image/png';
-            if (['.pdf'].includes(ext)) contentType = 'application/pdf';
-
+            const { buffer, contentType } = await fileService.getZipEntryData(file.path, entryPath);
             res.setHeader('Content-Type', contentType);
             res.send(buffer);
         } catch (e: any) {
