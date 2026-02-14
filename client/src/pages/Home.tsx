@@ -1,5 +1,5 @@
 import { Group, Text, Loader, Alert, Stack, Badge, Table, ActionIcon, Button, Center, Checkbox, Tooltip, LoadingOverlay } from '@mantine/core';
-import { IconFiles, IconAlertCircle, IconX, IconHammer, IconRefresh } from '@tabler/icons-react';
+import { IconFiles, IconAlertCircle, IconX, IconHammer, IconRefresh, IconExternalLink, IconFolder } from '@tabler/icons-react';
 import { useState, useRef, useMemo } from 'react';
 import { useAppStore } from '../store';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -16,7 +16,7 @@ export function HomePage() {
     searchCriteria, searchResults, isSearching, 
     selectedFileIds, toggleFileSelection, setFileSelection, clearFileSelection,
     removeTagFromFile, language, refreshAllScopes,
-    setPreviewFileId, previewFileId
+    setPreviewFileId, previewFileId, openFile, openDirectory
   } = useAppStore();
 
   const t = translations[language];
@@ -187,9 +187,10 @@ export function HomePage() {
                             onChange={handleSelectAll}
                         />
                     </Table.Th>
-                    <Table.Th style={{ cursor: 'pointer', width: '50%' }} onClick={() => handleSort('name')}>
+                    <Table.Th style={{ cursor: 'pointer', width: '40%' }} onClick={() => handleSort('name')}>
                     {t.name} {sortBy === 'name' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
                     </Table.Th>
+                    <Table.Th style={{ width: '80px' }}></Table.Th>
                     <Table.Th style={{ width: '25%' }}>{t.tags}</Table.Th>
                     <Table.Th style={{ cursor: 'pointer', width: '10%' }} onClick={() => handleSort('size')}>
                     {t.size} {sortBy === 'size' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
@@ -244,6 +245,20 @@ export function HomePage() {
                                                 </Text>
                                             )}
                                         </div>
+                                    </Group>
+                                </Table.Td>
+                                <Table.Td>
+                                    <Group gap={4} wrap="nowrap">
+                                        <Tooltip label={t.openDirectory}>
+                                            <ActionIcon variant="subtle" color="gray" size="sm" onClick={(e) => { e.stopPropagation(); openDirectory(file.id); }}>
+                                                <IconFolder size={14} />
+                                            </ActionIcon>
+                                        </Tooltip>
+                                        <Tooltip label={t.openFile}>
+                                            <ActionIcon variant="subtle" color="gray" size="sm" onClick={(e) => { e.stopPropagation(); openFile(file.id); }}>
+                                                <IconExternalLink size={14} />
+                                            </ActionIcon>
+                                        </Tooltip>
                                     </Group>
                                 </Table.Td>
                                 <Table.Td>

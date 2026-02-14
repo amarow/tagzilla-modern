@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { fileRepository } from '../db/repository';
 import { db } from '../db/client';
 import { spawn } from 'child_process';
+import path from 'path';
 import { AuthRequest } from '../auth';
 import { fileService } from '../services/file.service';
 
@@ -124,6 +125,38 @@ export const FileController = {
             child.on('error', (err) => console.error(`Failed to spawn viewer: ${err.message}`));
             child.unref(); 
             res.json({ success: true, message: 'File opening initiated' });
+        } catch (e: any) {
+            res.status(500).json({ error: e.message });
+        }
+    },
+
+    async openDirectory(req: Request, res: Response) {
+        try {
+            const { id } = req.params;
+            const file: any = db.prepare('SELECT * FROM FileHandle WHERE id = ?').get(id);
+            if (!file) return res.status(404).json({ error: 'File not found' });
+
+            const dirPath = path.dirname(file.path);
+            let command = '';
+            const args: string[] = [];
+            
+            switch (process.platform) {
+                case 'darwin': command = 'open'; args.push(dirPath); break;
+                case 'win32': command = 'explorer'; args.push(dirPath); break;
+                default: command = 'xdg-open'; args.push(dirPath); break;
+            }
+
+            const cleanEnv: NodeJS.ProcessEnv = {
+                PATH: process.env.PATH, HOME: process.env.HOME, DISPLAY: process.env.DISPLAY || ':0',
+                USER: process.env.USER, LANG: process.env.LANG, DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS,
+                XAUTHORITY: process.env.XAUTHORITY, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
+                XDG_DATA_DIRS: process.env.XDG_DATA_DIRS, XDG_CONFIG_DIRS: process.env.XDG_CONFIG_DIRS
+            };
+
+            const child = spawn(command, args, { detached: true, stdio: 'inherit', env: cleanEnv });
+            child.on('error', (err) => console.error(`Failed to spawn explorer: ${err.message}`));
+            child.unref(); 
+            res.json({ success: true, message: 'Directory opening initiated' });
         } catch (e: any) {
             res.status(500).json({ error: e.message });
         }

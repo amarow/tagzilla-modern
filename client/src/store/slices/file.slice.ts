@@ -13,6 +13,7 @@ export interface FileSlice {
   removeTagFromFile: (fileId: number, tagId: number) => Promise<void>;
   removeTagFromMultipleFiles: (fileIds: number[], tagId: number) => Promise<void>;
   openFile: (fileId: number) => Promise<void>;
+  openDirectory: (fileId: number) => Promise<void>;
   setPreviewFileId: (id: number | null) => void;
   toggleFileSelection: (fileId: number) => void;
   setFileSelection: (fileIds: number[]) => void;
@@ -167,6 +168,14 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
       await authFetch(`${API_BASE}/api/files/${fileId}/open`, get().token, { method: 'POST' });
     } catch (error) {
       console.error('Failed to open file', error);
+    }
+  },
+
+  openDirectory: async (fileId: number) => {
+    try {
+      await authFetch(`${API_BASE}/api/files/${fileId}/open-directory`, get().token, { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to open directory', error);
     }
   },
 

@@ -1,12 +1,16 @@
 import { Text, LoadingOverlay, Button, Group, Center, Table, Paper, Stack } from '@mantine/core';
 import { useAppStore } from '../store';
 import { useEffect, useState } from 'react';
-import { IconExternalLink, IconFileUnknown, IconArrowLeft } from '@tabler/icons-react';
+import { IconExternalLink, IconFileUnknown, IconArrowLeft, IconFolder } from '@tabler/icons-react';
 import { FileViewer } from './FileViewer';
 import { translations } from '../i18n';
 
 export function FilePreviewPanel() {
-    const { previewFileId, setPreviewFileId, files, searchResults, token, openFile, language } = useAppStore();
+    const { 
+        previewFileId, setPreviewFileId, files, searchResults, 
+        token, openFile, openDirectory, language 
+    } = useAppStore();
+    const t = translations[language];
     const [zipContent, setZipContent] = useState<any[] | null>(null);
     const [selectedZipEntry, setSelectedZipEntry] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -149,12 +153,21 @@ export function FilePreviewPanel() {
                 </Group>
                 <Group>
                     <Button 
+                        leftSection={<IconFolder size={16} />} 
+                        variant="light" 
+                        size="xs"
+                        color="gray"
+                        onClick={() => openDirectory(file.id)}
+                    >
+                        {t.openDirectory}
+                    </Button>
+                    <Button 
                         leftSection={<IconExternalLink size={16} />} 
                         variant="light" 
                         size="xs"
                         onClick={() => openFile(file.id)}
                     >
-                        Open System
+                        {t.openFile}
                     </Button>
                 </Group>
             </Group>
