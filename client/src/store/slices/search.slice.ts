@@ -19,7 +19,12 @@ export interface SearchSlice {
 let searchTimeout: any = null;
 
 export const createSearchSlice: StateCreator<any, [], [], SearchSlice> = (set, get) => ({
-  searchCriteria: { filename: '', content: '', directory: '' },
+  searchCriteria: { 
+    filename: '', 
+    content: '', 
+    directory: '',
+    enabled: true
+  },
   selectedTagIds: [],
   searchResults: [],
   isSearching: false,
@@ -45,17 +50,25 @@ export const createSearchSlice: StateCreator<any, [], [], SearchSlice> = (set, g
   },
 
   setSearchCriteria: (updates) => {
-      const newCriteria = { ...get().searchCriteria, ...updates };
+      const oldCriteria = get().searchCriteria;
+      const newCriteria = { ...oldCriteria, ...updates };
       set({ searchCriteria: newCriteria });
       get().savePreferences();
 
       if (searchTimeout) clearTimeout(searchTimeout);
 
-      const hasInput = (newCriteria.filename.length >= 3) || 
+      // If we just toggled from enabled to disabled, clear results to show all files
+      if (oldCriteria.enabled && !newCriteria.enabled) {
+          set({ searchResults: [], isSearching: false });
+          return;
+      }
+
+      const hasInput = newCriteria.enabled && (
+                       (newCriteria.filename.length >= 3) || 
                        (newCriteria.content.length >= 3) || 
-                       (newCriteria.directory.length >= 3);
+                       (newCriteria.directory.length >= 3));
       
-      const isEmpty = !newCriteria.filename && !newCriteria.content && !newCriteria.directory;
+      const isEmpty = !newCriteria.enabled || (!newCriteria.filename && !newCriteria.content && !newCriteria.directory);
 
       if (hasInput || isEmpty) {
           searchTimeout = setTimeout(() => {
@@ -66,7 +79,12 @@ export const createSearchSlice: StateCreator<any, [], [], SearchSlice> = (set, g
   
   clearSearch: () => {
       set({ 
-          searchCriteria: { filename: '', content: '', directory: '' }, 
+          searchCriteria: { 
+            filename: '', 
+            content: '', 
+            directory: '',
+            enabled: true
+          }, 
           searchResults: [],
           isSearching: false 
       });
@@ -77,9 +95,9 @@ export const createSearchSlice: StateCreator<any, [], [], SearchSlice> = (set, g
       if (searchTimeout) clearTimeout(searchTimeout);
       
       const { token, searchCriteria } = get();
-      const { filename, content, directory } = searchCriteria;
+      const { filename, content, directory, enabled } = searchCriteria;
 
-      if (!filename.trim() && !content.trim() && !directory.trim()) {
+      if (!enabled || (!filename.trim() && !content.trim() && !directory.trim())) {
           set({ searchResults: [], isSearching: false });
           return;
       }
@@ -87,9 +105,9 @@ export const createSearchSlice: StateCreator<any, [], [], SearchSlice> = (set, g
       set({ isSearching: true, error: null });
       try {
           const params = new URLSearchParams();
-          if (filename) params.append('filename', filename);
-          if (content) params.append('content', content);
-          if (directory) params.append('directory', directory);
+          if (filename) params.append('filename', filename.trim());
+          if (content) params.append('content', content.trim());
+          if (directory) params.append('directory', directory.trim());
 
           const res = await authFetch(`${API_BASE}/api/search?${params.toString()}`, token);
           if (res.ok) {

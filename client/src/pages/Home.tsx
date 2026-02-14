@@ -35,21 +35,21 @@ export function HomePage() {
   };
 
   const filteredFiles = useMemo(() => {
-    const { filename, content, directory } = searchCriteria;
+    const { filename, content, directory, enabled } = searchCriteria;
     
-    // If backend search was performed (implied by having content/directory search or filename search results)
-    // We use searchResults as base if provided
     let sourceFiles = files;
     
-    // Check if we are in a "backend search mode"
-    const hasSearch = filename.trim() || content.trim() || directory.trim();
+    // Check if search is active AND has input
+    const hasSearchInput = filename.trim() || content.trim() || directory.trim();
+    const isSearchActive = enabled && hasSearchInput;
     
-    // If we have search results from the API, we prefer them
-    if (hasSearch && searchResults.length > 0) {
-        sourceFiles = searchResults;
-    } else if (hasSearch && !isSearching && searchResults.length === 0) {
-        // Search performed but no results
-        return [];
+    if (isSearchActive) {
+        if (searchResults.length > 0) {
+            sourceFiles = searchResults;
+        } else if (!isSearching) {
+            // Search active but no results from API
+            return [];
+        }
     }
 
     console.log(`[HomePage] Filtering ${sourceFiles.length} files...`);

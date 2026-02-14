@@ -66,4 +66,5 @@ export interface SearchCriteria {
   filename: string;
   content: string;
   directory: string;
+  enabled: boolean;
 }

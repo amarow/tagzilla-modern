@@ -43,9 +43,10 @@ export const Header = ({ opened, toggle }: HeaderProps) => {
             <Group gap={8}>
               <TextInput 
                 placeholder={t.searchModeDirectory || 'Verzeichnis'}
-                leftSection={<IconSearch size={14} />} 
-                style={{ width: 200 }}
+                leftSection={<IconSearch size={14} />}
+                style={{ width: 160 }}
                 value={searchCriteria.directory}
+                disabled={!searchCriteria.enabled}
                 size="xs"
                 autoComplete="off"
                 onChange={(e) => {
@@ -63,9 +64,10 @@ export const Header = ({ opened, toggle }: HeaderProps) => {
               />
               <TextInput 
                 placeholder={t.name || 'Dateiname'}
-                leftSection={<IconSearch size={14} />} 
-                style={{ width: 200 }}
+                leftSection={<IconSearch size={14} />}
+                style={{ width: 160 }}
                 value={searchCriteria.filename}
+                disabled={!searchCriteria.enabled}
                 size="xs"
                 autoComplete="off"
                 onChange={(e) => {
@@ -83,9 +85,10 @@ export const Header = ({ opened, toggle }: HeaderProps) => {
               />
               <TextInput 
                 placeholder={t.searchContent || 'Inhalt'}
-                leftSection={<IconSearch size={14} />} 
-                style={{ width: 250 }}
+                leftSection={<IconSearch size={14} />}
+                style={{ width: 200 }}
                 value={searchCriteria.content}
+                disabled={!searchCriteria.enabled}
                 size="xs"
                 autoComplete="off"
                 onChange={(e) => {
@@ -101,6 +104,23 @@ export const Header = ({ opened, toggle }: HeaderProps) => {
                   ) : null
                 }
               />
+
+              <Button 
+                variant="default"
+                size="xs"
+                onClick={() => setSearchCriteria({ enabled: !searchCriteria.enabled })}
+                styles={{
+                    root: {
+                        paddingLeft: 8,
+                        paddingRight: 8,
+                        minWidth: 45,
+                        color: searchCriteria.enabled ? 'var(--mantine-color-blue-filled)' : 'var(--mantine-color-dimmed)',
+                        fontWeight: 700
+                    }
+                }}
+              >
+                {searchCriteria.enabled ? t.on : t.off}
+              </Button>
             </Group>
           </form>
         </Group>

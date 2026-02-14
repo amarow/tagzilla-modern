@@ -50,3 +50,8 @@
 ## Infrastruktur
 - Nur lokaler Betrieb (Self-Hosted).
 - Start via `start.sh` (Server + Client).
+
+
+  3. Infrastruktur & Typisierung
+   - Zentrales Error-Handling: Ein globaler Error-Handler im Backend und ein zentraler Notification-Service im Frontend für konsistente
+     Fehlermeldungen.

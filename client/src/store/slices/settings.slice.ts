@@ -209,11 +209,19 @@ export const createSettingsSlice: StateCreator<any, [], [], SettingsSlice> = (se
         const res = await authFetch(`${API_BASE}/api/preferences`, token);
         const prefs = await res.json();
         if (prefs) {
-            let criteria = { filename: '', content: '', directory: '' };
+            let criteria = { 
+                filename: '', 
+                content: '', 
+                directory: '',
+                enabled: true 
+            };
+            
             if (prefs.searchQuery && typeof prefs.searchQuery === 'string') {
                 criteria.filename = prefs.searchQuery;
             } else if (prefs.searchCriteria) {
                 criteria = { ...criteria, ...prefs.searchCriteria };
+                // Ensure enabled is true if not present in saved prefs
+                if (criteria.enabled === undefined) criteria.enabled = true;
             }
 
             set({ 
