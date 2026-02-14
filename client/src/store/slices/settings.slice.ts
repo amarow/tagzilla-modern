@@ -7,8 +7,8 @@ export interface SettingsSlice {
   privacyProfiles: PrivacyProfile[];
   
   fetchApiKeys: () => Promise<void>;
-  createApiKey: (name: string, permissions?: string, privacyProfileId?: number) => Promise<ApiKey | null>;
-  updateApiKey: (id: number, updates: Partial<Pick<ApiKey, 'name' | 'permissions' | 'privacyProfileId'>>) => Promise<void>;
+  createApiKey: (name: string, permissions?: string, privacyProfileIds?: number[]) => Promise<ApiKey | null>;
+  updateApiKey: (id: number, updates: Partial<Pick<ApiKey, 'name' | 'permissions' | 'privacyProfileIds'>>) => Promise<void>;
   deleteApiKey: (id: number) => Promise<void>;
 
   fetchPrivacyProfiles: () => Promise<void>;
@@ -17,8 +17,8 @@ export interface SettingsSlice {
   deletePrivacyProfile: (id: number) => Promise<void>;
   fetchPrivacyRules: (profileId: number) => Promise<PrivacyRule[]>;
   addPrivacyRule: (profileId: number, rule: Omit<PrivacyRule, 'id' | 'profileId' | 'isActive'>) => Promise<void>;
+  updatePrivacyRule: (id: number, updates: Partial<PrivacyRule>) => Promise<void>;
   deletePrivacyRule: (id: number) => Promise<void>;
-  togglePrivacyRule: (id: number, isActive: boolean) => Promise<void>;
   
   savePreferences: () => Promise<void>;
   init: () => Promise<void>;
@@ -40,12 +40,13 @@ export const createSettingsSlice: StateCreator<any, [], [], SettingsSlice> = (se
     }
   },
 
-  createApiKey: async (name, permissions, privacyProfileId) => {
+  createApiKey: async (name, permissions, privacyProfileIds) => {
     set({ isLoading: true });
     try {
+      const perms = Array.isArray(permissions) ? permissions.join(',') : permissions;
       const res = await authFetch(`${API_BASE}/api/keys`, get().token, {
         method: 'POST',
-        body: JSON.stringify({ name, permissions, privacyProfileId })
+        body: JSON.stringify({ name, permissions: perms, privacyProfileIds })
       });
       if (res.ok) {
         const newKey = await res.json();
@@ -74,7 +75,9 @@ export const createSettingsSlice: StateCreator<any, [], [], SettingsSlice> = (se
   updateApiKey: async (id, updates) => {
     try {
       const payload: any = { ...updates };
-      if (updates.permissions) payload.permissions = (updates.permissions as any).join(',');
+      if (updates.permissions && Array.isArray(updates.permissions)) {
+        payload.permissions = updates.permissions.join(',');
+      }
       const res = await authFetch(`${API_BASE}/api/keys/${id}`, get().token, {
         method: 'PATCH',
         body: JSON.stringify(payload)
@@ -163,23 +166,24 @@ export const createSettingsSlice: StateCreator<any, [], [], SettingsSlice> = (se
     }
   },
 
+  updatePrivacyRule: async (id, updates) => {
+    try {
+      const res = await authFetch(`${API_BASE}/api/privacy/rules/${id}`, get().token, {
+        method: 'PATCH',
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) await get().fetchPrivacyProfiles();
+    } catch (e) {
+      console.error("Failed to update privacy rule", e);
+    }
+  },
+
   deletePrivacyRule: async (id) => {
     try {
       const res = await authFetch(`${API_BASE}/api/privacy/rules/${id}`, get().token, { method: 'DELETE' });
       if (res.ok) await get().fetchPrivacyProfiles(); 
     } catch (e) {
       console.error("Failed to delete privacy rule", e);
-    }
-  },
-
-  togglePrivacyRule: async (id, isActive) => {
-    try {
-      await authFetch(`${API_BASE}/api/privacy/rules/${id}/toggle`, get().token, {
-        method: 'PATCH',
-        body: JSON.stringify({ isActive })
-      });
-    } catch (e) {
-      console.error("Failed to toggle privacy rule", e);
     }
   },
 

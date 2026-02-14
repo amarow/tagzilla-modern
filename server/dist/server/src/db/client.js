@@ -110,6 +110,15 @@ if (worker_threads_1.isMainThread) {
         FOREIGN KEY (profileId) REFERENCES PrivacyProfile(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS ApiKeyPrivacyProfile (
+        apiKeyId INTEGER NOT NULL,
+        privacyProfileId INTEGER NOT NULL,
+        sequence INTEGER NOT NULL,
+        FOREIGN KEY (apiKeyId) REFERENCES ApiKey(id) ON DELETE CASCADE,
+        FOREIGN KEY (privacyProfileId) REFERENCES PrivacyProfile(id) ON DELETE CASCADE,
+        PRIMARY KEY (apiKeyId, privacyProfileId)
+      );
+
       CREATE VIRTUAL TABLE IF NOT EXISTS FileContentIndex USING fts5(
         content,
         tokenize='porter'

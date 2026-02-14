@@ -16,7 +16,7 @@ export interface AuthRequest extends Request {
     id: number;
     name: string;
     permissions: string[];
-    privacyProfileId: number | null;
+    privacyProfileIds: number[];
   };
 }
 
@@ -97,8 +97,8 @@ export const authenticateApiKey = async (req: Request, res: Response, next: Next
   (req as AuthRequest).apiKey = {
     id: apiKeyRecord.id,
     name: apiKeyRecord.name,
-    permissions: apiKeyRecord.permissions.split(','),
-    privacyProfileId: apiKeyRecord.privacyProfileId
+    permissions: apiKeyRecord.permissions,
+    privacyProfileIds: apiKeyRecord.privacyProfileIds
   };
   
   // Trigger crawler for this user (background)

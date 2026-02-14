@@ -11,5 +11,6 @@ router.patch('/profiles/:id', auth_1.authenticateToken, PrivacyController_1.Priv
 router.get('/profiles/:id/rules', auth_1.authenticateToken, PrivacyController_1.PrivacyController.getRules);
 router.post('/profiles/:id/rules', auth_1.authenticateToken, PrivacyController_1.PrivacyController.addRule);
 router.delete('/rules/:id', auth_1.authenticateToken, PrivacyController_1.PrivacyController.deleteRule);
+router.patch('/rules/:id', auth_1.authenticateToken, PrivacyController_1.PrivacyController.updateRule);
 router.patch('/rules/:id/toggle', auth_1.authenticateToken, PrivacyController_1.PrivacyController.toggleRule);
 exports.default = router;

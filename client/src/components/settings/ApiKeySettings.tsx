@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Title, Card, Group, Stack, Text, Button, ActionIcon, Badge, Modal, TextInput, MultiSelect, Select } from '@mantine/core';
+import { Title, Card, Group, Stack, Text, Button, ActionIcon, Badge, Modal, TextInput, MultiSelect } from '@mantine/core';
 import { IconPlus, IconKey, IconShieldLock, IconSettings, IconTrash, IconCopy, IconCheck } from '@tabler/icons-react';
 import { useAppStore } from '../../store';
 import { translations } from '../../i18n';
@@ -17,7 +17,7 @@ export const ApiKeySettings = () => {
   const [editingKeyId, setEditingKeyId] = useState<number | null>(null);
   const [newKeyName, setNewKeyName] = useState('');
   const [selectedTagsForKey, setSelectedTagsForKey] = useState<string[]>([]);
-  const [selectedPrivacyProfileId, setSelectedPrivacyProfileId] = useState<string | null>(null);
+  const [selectedPrivacyProfiles, setSelectedPrivacyProfiles] = useState<string[]>([]);
   const [existingKeyString, setExistingKeyString] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,7 +42,7 @@ export const ApiKeySettings = () => {
                           setEditingKeyId(null);
                           setNewKeyName('');
                           setSelectedTagsForKey([]);
-                          setSelectedPrivacyProfileId(null);
+                          setSelectedPrivacyProfiles([]);
                           setExistingKeyString(null);
                           setIsKeyModalOpen(true);
                       }}
@@ -78,10 +78,17 @@ export const ApiKeySettings = () => {
                                       return p;
                                   }).join(', ')}
                               </Text>
-                              {(key as any).privacyProfileName && (
-                                  <Badge variant="outline" size="xs" color="blue" leftSection={<IconShieldLock size={10} />}>
-                                      {(key as any).privacyProfileName}
-                                  </Badge>
+                              {key.privacyProfileIds && key.privacyProfileIds.length > 0 && (
+                                  <Group gap={4}>
+                                      {key.privacyProfileIds.map(pid => {
+                                          const profile = privacyProfiles.find(p => p.id === pid);
+                                          return profile ? (
+                                              <Badge key={pid} variant="outline" size="xs" color="blue" leftSection={<IconShieldLock size={10} />}>
+                                                  {profile.name}
+                                              </Badge>
+                                          ) : null;
+                                      })}
+                                  </Group>
                               )}
                           </Group>
                       </Stack>
@@ -92,7 +99,7 @@ export const ApiKeySettings = () => {
                                   setEditingKeyId(key.id);
                                   setNewKeyName(key.name);
                                   setSelectedTagsForKey(key.permissions.filter(p => p.startsWith('tag:')).map(p => p.split(':')[1]));
-                                  setSelectedPrivacyProfileId(key.privacyProfileId ? String(key.privacyProfileId) : 'none');
+                                  setSelectedPrivacyProfiles(key.privacyProfileIds ? key.privacyProfileIds.map(String) : []);
                                   setExistingKeyString(key.key || null);
                                   setIsKeyModalOpen(true);
                               }}
@@ -167,33 +174,28 @@ export const ApiKeySettings = () => {
                   value={selectedTagsForKey}
                   onChange={setSelectedTagsForKey}
               />
-              <Select 
-                  label={t.privacyProfile}
+              <MultiSelect 
+                  label={t.anonymization}
                   placeholder={t.noProfile}
-                  data={[
-                      { value: 'none', label: t.noProfile },
-                      ...privacyProfiles.map(p => ({ value: String(p.id), label: p.name }))
-                  ]}
-                  value={selectedPrivacyProfileId}
-                  onChange={setSelectedPrivacyProfileId}
+                  data={privacyProfiles.map(p => ({ value: String(p.id), label: p.name }))}
+                  value={selectedPrivacyProfiles}
+                  onChange={setSelectedPrivacyProfiles}
               />
               <Button 
                   onClick={async () => {
                       const perms = selectedTagsForKey.length > 0 
                           ? selectedTagsForKey.map(id => `tag:${id}`).join(',')
                           : 'files:read,tags:read';
-                      const profileId = selectedPrivacyProfileId && selectedPrivacyProfileId !== 'none' 
-                          ? parseInt(selectedPrivacyProfileId) 
-                          : null;
+                      const profileIds = selectedPrivacyProfiles.map(id => parseInt(id));
                       
                       if (editingKeyId) {
                           await updateApiKey(editingKeyId, { 
                               name: newKeyName, 
                               permissions: perms as any, 
-                              privacyProfileId: profileId 
+                              privacyProfileIds: profileIds 
                           });
                       } else {
-                          await createApiKey(newKeyName, perms, profileId || undefined);
+                          await createApiKey(newKeyName, perms, profileIds);
                       }
                       setIsKeyModalOpen(false);
                   }}

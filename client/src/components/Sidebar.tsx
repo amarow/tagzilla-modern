@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { AppShell, Stack, Group, Text, TextInput, ActionIcon, ScrollArea, Button, Modal, ColorSwatch, Divider, Box } from '@mantine/core';
-import { IconPlus, IconPencil, IconTrash, IconCheck, IconTags } from '@tabler/icons-react';
+import { AppShell, Stack, Group, Text, TextInput, ActionIcon, ScrollArea, Button, Modal, ColorSwatch, Box } from '@mantine/core';
+import { IconPlus, IconPencil, IconTrash, IconCheck } from '@tabler/icons-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { translations } from '../i18n';

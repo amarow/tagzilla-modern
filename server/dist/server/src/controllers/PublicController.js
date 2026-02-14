@@ -37,8 +37,17 @@ exports.PublicController = {
     async search(req, res) {
         try {
             const userId = req.user.id;
+            const apiKey = req.apiKey;
             const { filename, content, directory } = req.query;
-            const results = await repository_1.searchRepository.search(userId, { filename, content, directory });
+            let results = await repository_1.searchRepository.search(userId, { filename, content, directory });
+            if (apiKey && apiKey.privacyProfileIds && apiKey.privacyProfileIds.length > 0) {
+                results = await Promise.all(results.map(async (f) => {
+                    if (f.snippet) {
+                        f.snippet = await privacy_1.privacyService.redactWithMultipleProfiles(f.snippet, apiKey.privacyProfileIds);
+                    }
+                    return f;
+                }));
+            }
             res.json(results);
         }
         catch (e) {
@@ -50,6 +59,7 @@ exports.PublicController = {
             const userId = req.user.id;
             const { id } = req.params;
             const apiKey = req.apiKey;
+            const { profileId } = req.query;
             let allowedTagIds = undefined;
             if (apiKey) {
                 allowedTagIds = apiKey.permissions
@@ -67,8 +77,18 @@ exports.PublicController = {
                     return res.status(403).json({ error: 'Access denied' });
             }
             let text = await file_service_1.fileService.extractText(file.path, file.extension);
-            if (apiKey && apiKey.privacyProfileId) {
-                text = await privacy_1.privacyService.redactText(text, apiKey.privacyProfileId);
+            // Use profiles from API Key or manual override (for preview)
+            let profileIdsToApply = [];
+            if (apiKey && apiKey.privacyProfileIds && apiKey.privacyProfileIds.length > 0) {
+                profileIdsToApply = apiKey.privacyProfileIds;
+            }
+            else if (profileId) {
+                profileIdsToApply = Array.isArray(profileId)
+                    ? profileId.map(pid => Number(pid))
+                    : [Number(profileId)];
+            }
+            if (profileIdsToApply.length > 0) {
+                text = await privacy_1.privacyService.redactWithMultipleProfiles(text, profileIdsToApply);
             }
             res.setHeader('Content-Type', 'text/plain');
             res.send(text);

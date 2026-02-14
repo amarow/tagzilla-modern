@@ -12,6 +12,7 @@ router.patch('/profiles/:id', authenticateToken, PrivacyController.updateProfile
 router.get('/profiles/:id/rules', authenticateToken, PrivacyController.getRules);
 router.post('/profiles/:id/rules', authenticateToken, PrivacyController.addRule);
 router.delete('/rules/:id', authenticateToken, PrivacyController.deleteRule);
+router.patch('/rules/:id', authenticateToken, PrivacyController.updateRule);
 router.patch('/rules/:id/toggle', authenticateToken, PrivacyController.toggleRule);
 
 export default router;

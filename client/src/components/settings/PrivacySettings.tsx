@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Title, Card, Group, Stack, Text, Button, ActionIcon, Table, Badge, Switch, Modal, TextInput, Select, Paper, Center } from '@mantine/core';
-import { IconPlus, IconShieldLock, IconSettings, IconTrash, IconCheck } from '@tabler/icons-react';
+import { Title, Card, Group, Stack, Text, Button, ActionIcon, Table, Switch, Modal, TextInput, Select, Paper, Center } from '@mantine/core';
+import { IconPlus, IconShieldLock, IconSettings, IconTrash, IconCheck, IconCopy } from '@tabler/icons-react';
 import { useAppStore } from '../../store';
 import { translations } from '../../i18n';
 import { modals } from '@mantine/modals';
@@ -8,7 +8,7 @@ import { modals } from '@mantine/modals';
 export const PrivacySettings = () => {
   const { 
     privacyProfiles, createPrivacyProfile, deletePrivacyProfile, updatePrivacyProfile,
-    fetchPrivacyRules, addPrivacyRule, deletePrivacyRule, togglePrivacyRule, 
+    fetchPrivacyRules, addPrivacyRule, deletePrivacyRule, updatePrivacyRule,
     language, isLoading 
   } = useAppStore();
   const t = translations[language];
@@ -17,7 +17,36 @@ export const PrivacySettings = () => {
   const [activeProfileName, setActiveProfileName] = useState('');
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
   const [rules, setRules] = useState<any[]>([]);
-  const [newRule, setNewRule] = useState({ type: 'LITERAL', pattern: '', replacement: '[REDACTED]' });
+
+  const refreshRules = async (profileId: number) => {
+      const r = await fetchPrivacyRules(profileId);
+      setRules(r);
+  };
+
+  const handleUpdateRule = async (id: number, updates: any) => {
+      await updatePrivacyRule(id, updates);
+      if (activeProfileId) refreshRules(activeProfileId);
+  };
+
+  const handleAddEmptyRule = async () => {
+      if (!activeProfileId) return;
+      await addPrivacyRule(activeProfileId, {
+          type: 'LITERAL',
+          pattern: '',
+          replacement: '[REDACTED]'
+      });
+      refreshRules(activeProfileId);
+  };
+
+  const handleCloneRule = async (rule: any) => {
+      if (!activeProfileId) return;
+      await addPrivacyRule(activeProfileId, {
+          type: rule.type,
+          pattern: `${rule.pattern} (Copy)`,
+          replacement: rule.replacement
+      });
+      refreshRules(activeProfileId);
+  };
 
   return (
     <>
@@ -131,95 +160,119 @@ export const PrivacySettings = () => {
 
               {activeProfileId ? (
                   <>
-                      <Card withBorder p="sm">
-                          <Text fw={500} size="sm" mb="xs">{t.addRule}</Text>
-                          <Group align="flex-end">
-                              <Select 
-                                  label={t.type}
-                                  data={[
-                                      { value: 'LITERAL', label: t.literal },
-                                      { value: 'REGEX', label: t.regex }
-                                  ]}
-                                  value={newRule.type}
-                                  onChange={(val) => setNewRule({...newRule, type: val || 'LITERAL'})}
-                                  style={{ width: 150 }}
-                              />
-                              <TextInput 
-                                  label={t.pattern}
-                                  placeholder="e.g. My Company Name"
-                                  value={newRule.pattern}
-                                  onChange={(e) => setNewRule({...newRule, pattern: e.currentTarget.value})}
-                                  style={{ flex: 1 }}
-                              />
-                              <TextInput 
-                                  label={t.replacement}
-                                  value={newRule.replacement}
-                                  onChange={(e) => setNewRule({...newRule, replacement: e.currentTarget.value})}
-                                  style={{ width: 150 }}
-                              />
-                              <Button 
-                                  onClick={async () => {
-                                      if (activeProfileId && newRule.pattern.trim()) {
-                                          await addPrivacyRule(activeProfileId, {
-                                              type: newRule.type as any,
-                                              pattern: newRule.pattern.trim(),
-                                              replacement: newRule.replacement
-                                          });
-                                          const r = await fetchPrivacyRules(activeProfileId);
-                                          setRules(r);
-                                          setNewRule({ type: 'LITERAL', pattern: '', replacement: '[REDACTED]' });
-                                      }
-                                  }}
-                                  disabled={!newRule.pattern.trim()}
-                                  loading={isLoading}
-                              >
-                                  <IconPlus size={16} />
-                              </Button>
-                          </Group>
-                      </Card>
+                      <Group justify="space-between" align="center" mt="md">
+                          <Text fw={500} size="sm">{t.rules}</Text>
+                          <Button 
+                              size="xs" 
+                              variant="light" 
+                              leftSection={<IconPlus size={14} />}
+                              onClick={handleAddEmptyRule}
+                              loading={isLoading}
+                          >
+                              {t.add}
+                          </Button>
+                      </Group>
 
-                      <Table striped highlightOnHover withTableBorder>
+                      <Table striped highlightOnHover withTableBorder mt="xs">
                           <thead>
                               <tr>
-                                  <th style={{ textAlign: 'left' }}>{t.type}</th>
+                                  <th style={{ width: 120, textAlign: 'left' }}>{t.type}</th>
                                   <th style={{ textAlign: 'left' }}>{t.pattern}</th>
-                                  <th style={{ textAlign: 'left' }}>{t.replacement}</th>
-                                  <th style={{ width: 80, textAlign: 'left' }}>{t.active}</th>
-                                  <th style={{ width: 50 }}></th>
+                                  <th style={{ width: 150, textAlign: 'left' }}>{t.replacement}</th>
+                                  <th style={{ width: 60, textAlign: 'left' }}>{t.active}</th>
+                                  <th style={{ width: 90 }}></th>
                               </tr>
                           </thead>
                           <tbody>
                               {rules.map(rule => (
                                   <tr key={rule.id}>
-                                      <td style={{ textAlign: 'left' }}><Badge size="xs" variant="light">{rule.type}</Badge></td>
-                                      <td style={{ textAlign: 'left' }}><Text size="sm" style={{ fontFamily: 'monospace' }}>{rule.pattern}</Text></td>
-                                      <td style={{ textAlign: 'left' }}><Text size="sm">{rule.replacement}</Text></td>
+                                      <td>
+                                          <Select 
+                                              size="xs"
+                                              variant="unstyled"
+                                              data={[
+                                                  { value: 'LITERAL', label: t.literal },
+                                                  { value: 'REGEX', label: t.regex },
+                                                  { value: 'EMAIL', label: t.email },
+                                                  { value: 'IBAN', label: t.iban },
+                                                  { value: 'IPV4', label: t.ipv4 },
+                                                  { value: 'PHONE', label: t.phone }
+                                              ]}
+                                              value={rule.type}
+                                              onChange={(val) => handleUpdateRule(rule.id, { type: val })}
+                                          />
+                                      </td>
+                                      <td>
+                                          <TextInput 
+                                              size="xs"
+                                              variant="unstyled"
+                                              value={rule.pattern}
+                                              placeholder={rule.type === 'LITERAL' || rule.type === 'REGEX' ? t.pattern : '---'}
+                                              disabled={rule.type !== 'LITERAL' && rule.type !== 'REGEX'}
+                                              onChange={(e) => {
+                                                  const newPattern = e.currentTarget.value;
+                                                  const newRules = rules.map(r => r.id === rule.id ? { ...r, pattern: newPattern } : r);
+                                                  setRules(newRules);
+                                              }}
+                                              onBlur={(e) => handleUpdateRule(rule.id, { pattern: e.currentTarget.value })}
+                                              styles={{ input: { fontFamily: 'monospace' } }}
+                                          />
+                                      </td>
+                                      <td>
+                                          <TextInput 
+                                              size="xs"
+                                              variant="unstyled"
+                                              value={rule.replacement}
+                                              placeholder={t.replacement}
+                                              onChange={(e) => {
+                                                  const newRepl = e.currentTarget.value;
+                                                  const newRules = rules.map(r => r.id === rule.id ? { ...r, replacement: newRepl } : r);
+                                                  setRules(newRules);
+                                              }}
+                                              onBlur={(e) => handleUpdateRule(rule.id, { replacement: e.currentTarget.value })}
+                                          />
+                                      </td>
                                       <td style={{ textAlign: 'left' }}>
                                           <Switch 
                                               checked={!!rule.isActive}
                                               onChange={async (e) => {
-                                                  await togglePrivacyRule(rule.id, e.currentTarget.checked);
-                                                  const r = await fetchPrivacyRules(rule.profileId);
-                                                  setRules(r);
+                                                  await handleUpdateRule(rule.id, { isActive: e.currentTarget.checked });
                                               }}
                                               size="xs"
                                           />
                                       </td>
                                       <td>
-                                          <ActionIcon 
-                                              variant="subtle" 
-                                              color="red" 
-                                              onClick={async () => {
-                                                  await deletePrivacyRule(rule.id);
-                                                  const r = await fetchPrivacyRules(rule.profileId);
-                                                  setRules(r);
-                                              }}
-                                          >
-                                              <IconTrash size={14} />
-                                          </ActionIcon>
+                                          <Group gap={4} wrap="nowrap">
+                                              <ActionIcon 
+                                                  variant="subtle" 
+                                                  color="blue" 
+                                                  size="sm"
+                                                  onClick={() => handleCloneRule(rule)}
+                                              >
+                                                  <IconCopy size={14} />
+                                              </ActionIcon>
+                                              <ActionIcon 
+                                                  variant="subtle" 
+                                                  color="red" 
+                                                  size="sm"
+                                                  onClick={async () => {
+                                                      await deletePrivacyRule(rule.id);
+                                                      refreshRules(activeProfileId);
+                                                  }}
+                                              >
+                                                  <IconTrash size={14} />
+                                              </ActionIcon>
+                                          </Group>
                                       </td>
                                   </tr>
                               ))}
+                              {rules.length === 0 && (
+                                  <tr>
+                                      <td colSpan={5}>
+                                          <Text size="xs" c="dimmed" ta="center" py="sm">No rules defined yet.</Text>
+                                      </td>
+                                  </tr>
+                              )}
                           </tbody>
                       </Table>
                   </>

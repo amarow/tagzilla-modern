@@ -66,7 +66,7 @@ export const PrivacyController = {
         try {
             const { id } = req.params;
             const { type, pattern, replacement } = req.body;
-            if (!type || !pattern || replacement === undefined) return res.status(400).json({ error: 'Missing rule fields' });
+            if (!type || pattern === undefined || replacement === undefined) return res.status(400).json({ error: 'Missing rule fields' });
             const rule = await privacyRepository.addRule(Number(id), { type, pattern, replacement });
             res.json(rule);
         } catch (e: any) {
@@ -89,6 +89,17 @@ export const PrivacyController = {
             const { id } = req.params;
             const { isActive } = req.body;
             await privacyRepository.toggleRule(Number(id), isActive);
+            res.json({ success: true });
+        } catch (e: any) {
+            res.status(500).json({ error: e.message });
+        }
+    },
+
+    async updateRule(req: Request, res: Response) {
+        try {
+            const { id } = req.params;
+            const { type, pattern, replacement, isActive } = req.body;
+            await privacyRepository.updateRule(Number(id), { type, pattern, replacement, isActive });
             res.json({ success: true });
         } catch (e: any) {
             res.status(500).json({ error: e.message });

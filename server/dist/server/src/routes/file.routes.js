@@ -10,6 +10,7 @@ router.get('/:id/content', auth_1.authenticateToken, FileController_1.FileContro
 router.get('/:id/zip-content', auth_1.authenticateToken, FileController_1.FileController.getZipContent);
 router.get('/:id/zip-entry', auth_1.authenticateToken, FileController_1.FileController.getZipEntry);
 router.post('/:id/open', auth_1.authenticateToken, FileController_1.FileController.openFile);
+router.post('/:id/open-directory', auth_1.authenticateToken, FileController_1.FileController.openDirectory);
 // Tags Logic
 router.post('/:id/tags', auth_1.authenticateToken, FileController_1.FileController.addTag);
 router.post('/bulk-tags', auth_1.authenticateToken, FileController_1.FileController.bulkAddTags);

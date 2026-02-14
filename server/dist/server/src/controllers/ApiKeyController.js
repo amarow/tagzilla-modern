@@ -17,11 +17,12 @@ exports.ApiKeyController = {
     async create(req, res) {
         try {
             const userId = req.user.id;
-            const { name, permissions, privacyProfileId } = req.body;
+            const { name, permissions, privacyProfileIds } = req.body;
             if (!name)
                 return res.status(400).json({ error: 'Name is required' });
+            const permsString = Array.isArray(permissions) ? permissions.join(',') : (permissions || 'files:read,tags:read');
             const key = auth_1.authService.generateApiKey();
-            const newKey = await repository_1.apiKeyRepository.create(userId, name, key, permissions || 'files:read,tags:read', privacyProfileId);
+            const newKey = await repository_1.apiKeyRepository.create(userId, name, key, permsString, privacyProfileIds);
             res.json(newKey);
         }
         catch (e) {
@@ -43,8 +44,9 @@ exports.ApiKeyController = {
         try {
             const userId = req.user.id;
             const { id } = req.params;
-            const { name, permissions, privacyProfileId } = req.body;
-            await repository_1.apiKeyRepository.update(userId, Number(id), { name, permissions, privacyProfileId });
+            const { name, permissions, privacyProfileIds } = req.body;
+            const permsString = Array.isArray(permissions) ? permissions.join(',') : permissions;
+            await repository_1.apiKeyRepository.update(userId, Number(id), { name, permissions: permsString, privacyProfileIds });
             res.json({ success: true });
         }
         catch (e) {

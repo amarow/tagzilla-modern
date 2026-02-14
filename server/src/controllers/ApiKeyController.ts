@@ -16,11 +16,12 @@ export const ApiKeyController = {
     async create(req: Request, res: Response) {
         try {
             const userId = (req as AuthRequest).user!.id;
-            const { name, permissions, privacyProfileId } = req.body;
+            const { name, permissions, privacyProfileIds } = req.body;
             if (!name) return res.status(400).json({ error: 'Name is required' });
             
+            const permsString = Array.isArray(permissions) ? permissions.join(',') : (permissions || 'files:read,tags:read');
             const key = authService.generateApiKey();
-            const newKey = await apiKeyRepository.create(userId, name, key, permissions || 'files:read,tags:read', privacyProfileId);
+            const newKey = await apiKeyRepository.create(userId, name, key, permsString, privacyProfileIds);
             res.json(newKey);
         } catch (e: any) {
             res.status(500).json({ error: e.message });
@@ -42,8 +43,10 @@ export const ApiKeyController = {
         try {
             const userId = (req as AuthRequest).user!.id;
             const { id } = req.params;
-            const { name, permissions, privacyProfileId } = req.body;
-            await apiKeyRepository.update(userId, Number(id), { name, permissions, privacyProfileId });
+            const { name, permissions, privacyProfileIds } = req.body;
+            
+            const permsString = Array.isArray(permissions) ? permissions.join(',') : permissions;
+            await apiKeyRepository.update(userId, Number(id), { name, permissions: permsString, privacyProfileIds });
             res.json({ success: true });
         } catch (e: any) {
             res.status(500).json({ error: e.message });

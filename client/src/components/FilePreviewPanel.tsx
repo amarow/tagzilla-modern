@@ -1,4 +1,4 @@
-import { Text, LoadingOverlay, Button, Group, Center, Table, Paper, Stack } from '@mantine/core';
+import { Text, LoadingOverlay, Button, Group, Center, Table, Paper, Stack, Select } from '@mantine/core';
 import { useAppStore } from '../store';
 import { useEffect, useState } from 'react';
 import { IconExternalLink, IconFileUnknown, IconArrowLeft, IconFolder, IconShieldLock, IconEye } from '@tabler/icons-react';
@@ -10,7 +10,7 @@ export function FilePreviewPanel() {
     const { 
         previewFileId, setPreviewFileId, files, searchResults, 
         token, openFile, openDirectory, language,
-        privacyProfiles, fetchPrivacyProfiles
+        privacyProfiles, fetchPrivacyProfiles, apiKeys, fetchApiKeys
     } = useAppStore();
     const t = translations[language];
     const [zipContent, setZipContent] = useState<any[] | null>(null);
@@ -19,25 +19,42 @@ export function FilePreviewPanel() {
     const [error, setError] = useState<string | null>(null);
     const [exportView, setExportView] = useState(false);
     const [redactedText, setRedactedText] = useState<string | null>(null);
+    const [selectedApiKeyId, setSelectedApiKeyId] = useState<string | null>(null);
 
     // Look up file in files list OR search results
     const file = files.find(f => f.id === previewFileId) || searchResults.find(f => f.id === previewFileId);
 
     useEffect(() => {
-        if (privacyProfiles.length === 0 && token) {
-            fetchPrivacyProfiles();
+        if (token) {
+            if (privacyProfiles.length === 0) fetchPrivacyProfiles();
+            if (apiKeys.length === 0) fetchApiKeys();
         }
     }, [token]);
 
-    // Fetch redacted text when exportView is enabled
+    // Set default API key if none selected
     useEffect(() => {
-        if (exportView && file && token) {
-            const profileId = privacyProfiles[0]?.id;
-            if (!profileId) return;
+        if (apiKeys.length > 0 && !selectedApiKeyId) {
+            setSelectedApiKeyId(apiKeys[0].id.toString());
+        }
+    }, [apiKeys]);
+
+    // Fetch redacted text when exportView is enabled or API Key changes
+    useEffect(() => {
+        if (exportView && file && token && selectedApiKeyId) {
+            const apiKey = apiKeys.find(k => k.id.toString() === selectedApiKeyId);
+            if (!apiKey) return;
 
             setLoading(true);
-            authFetch(`${API_BASE}/api/files/${file.id}/text-content?profileId=${profileId}`, token)
-                .then(res => res.text())
+            // Construct profileIds query string part: profileId=1&profileId=2...
+            const profilesQuery = apiKey.privacyProfileIds && apiKey.privacyProfileIds.length > 0
+                ? apiKey.privacyProfileIds.map(id => `profileId=${id}`).join('&')
+                : '';
+
+            authFetch(`${API_BASE}/api/v1/files/${file.id}/text?${profilesQuery}`, token)
+                .then(async res => {
+                    if (res.status === 403) return 'ACCESS DENIED (Tag mismatch for this API Key)';
+                    return res.text();
+                })
                 .then(text => {
                     setRedactedText(text);
                     setLoading(false);
@@ -47,7 +64,7 @@ export function FilePreviewPanel() {
                     setLoading(false);
                 });
         }
-    }, [exportView, file, token, privacyProfiles]);
+    }, [exportView, file, token, selectedApiKeyId, apiKeys]);
 
     // Handle Escape key to close preview
     useEffect(() => {
@@ -180,6 +197,16 @@ export function FilePreviewPanel() {
                     </div>
                 </Group>
                 <Group>
+                    {exportView && apiKeys.length > 0 && (
+                        <Select
+                            size="xs"
+                            placeholder={t.apiKey}
+                            data={apiKeys.map(k => ({ value: k.id.toString(), label: k.name }))}
+                            value={selectedApiKeyId}
+                            onChange={setSelectedApiKeyId}
+                            style={{ width: 180 }}
+                        />
+                    )}
                     <Button 
                         leftSection={exportView ? <IconEye size={16} /> : <IconShieldLock size={16} />} 
                         variant="light" 
@@ -230,11 +257,22 @@ export function FilePreviewPanel() {
                     <>
                         {exportView ? (
                             <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                                {privacyProfiles.length > 0 ? (
+                                {selectedApiKeyId ? (
                                     <Paper withBorder p="md" style={{ flex: 1, overflow: 'auto', whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '13px' }}>
-                                        <Text size="xs" c="dimmed" mb="md" fw={700}>
-                                            PROFIL: {privacyProfiles[0].name}
-                                        </Text>
+                                        <Stack gap="xs" mb="md">
+                                            <Text size="xs" c="dimmed" fw={700}>
+                                                API KEY: {apiKeys.find(k => k.id.toString() === selectedApiKeyId)?.name || 'Unknown'} 
+                                                ({apiKeys.find(k => k.id.toString() === selectedApiKeyId)?.privacyProfileIds.length || 0} PROFILES)
+                                            </Text>
+                                            <Paper withBorder p="xs" bg="var(--mantine-color-dark-8)" style={{ borderRadius: '4px' }}>
+                                                <Group gap="xs" wrap="nowrap">
+                                                    <Text size="xs" c="blue" fw={700} style={{ flexShrink: 0 }}>GET</Text>
+                                                    <Text size="xs" style={{ wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                                                        {`${window.location.origin}/api/v1/files/${file.id}/text`}
+                                                    </Text>
+                                                </Group>
+                                            </Paper>
+                                        </Stack>
                                         {redactedText}
                                     </Paper>
                                 ) : (

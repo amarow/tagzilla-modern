@@ -44,10 +44,10 @@ export const PublicController = {
             
             let results = await searchRepository.search(userId, { filename, content, directory });
             
-            if (apiKey && apiKey.privacyProfileId) {
+            if (apiKey && apiKey.privacyProfileIds && apiKey.privacyProfileIds.length > 0) {
                 results = await Promise.all(results.map(async (f: any) => {
                     if (f.snippet) {
-                        f.snippet = await privacyService.redactText(f.snippet, apiKey.privacyProfileId!);
+                        f.snippet = await privacyService.redactWithMultipleProfiles(f.snippet, apiKey.privacyProfileIds);
                     }
                     return f;
                 }));
@@ -64,6 +64,7 @@ export const PublicController = {
             const userId = (req as AuthRequest).user!.id;
             const { id } = req.params;
             const apiKey = (req as AuthRequest).apiKey;
+            const { profileId } = req.query;
             
             let allowedTagIds: number[] | undefined = undefined;
             if (apiKey) {
@@ -85,8 +86,18 @@ export const PublicController = {
 
             let text = await fileService.extractText(file.path, file.extension);
 
-            if (apiKey && apiKey.privacyProfileId) {
-                text = await privacyService.redactText(text, apiKey.privacyProfileId);
+            // Use profiles from API Key or manual override (for preview)
+            let profileIdsToApply: number[] = [];
+            if (apiKey && apiKey.privacyProfileIds && apiKey.privacyProfileIds.length > 0) {
+                profileIdsToApply = apiKey.privacyProfileIds;
+            } else if (profileId) {
+                profileIdsToApply = Array.isArray(profileId) 
+                    ? profileId.map(pid => Number(pid)) 
+                    : [Number(profileId)];
+            }
+
+            if (profileIdsToApply.length > 0) {
+                text = await privacyService.redactWithMultipleProfiles(text, profileIdsToApply);
             }
 
             res.setHeader('Content-Type', 'text/plain');

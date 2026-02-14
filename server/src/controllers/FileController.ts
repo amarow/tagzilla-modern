@@ -32,7 +32,10 @@ export const FileController = {
             let text = await fileService.extractText(file.path, file.extension);
             
             if (profileId) {
-                text = await privacyService.redactText(text, Number(profileId));
+                const profileIds = Array.isArray(profileId) 
+                    ? profileId.map(id => Number(id)) 
+                    : [Number(profileId)];
+                text = await privacyService.redactWithMultipleProfiles(text, profileIds);
             }
 
             res.setHeader('Content-Type', 'text/plain');

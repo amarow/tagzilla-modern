@@ -39,5 +39,29 @@ exports.privacyRepository = {
     async toggleRule(id, isActive) {
         const stmt = client_1.db.prepare('UPDATE PrivacyRule SET isActive = ? WHERE id = ?');
         stmt.run(isActive ? 1 : 0, id);
+    },
+    async updateRule(id, rule) {
+        const fields = [];
+        const values = [];
+        if (rule.type !== undefined) {
+            fields.push('type = ?');
+            values.push(rule.type);
+        }
+        if (rule.pattern !== undefined) {
+            fields.push('pattern = ?');
+            values.push(rule.pattern);
+        }
+        if (rule.replacement !== undefined) {
+            fields.push('replacement = ?');
+            values.push(rule.replacement);
+        }
+        if (rule.isActive !== undefined) {
+            fields.push('isActive = ?');
+            values.push(rule.isActive ? 1 : 0);
+        }
+        if (fields.length === 0)
+            return;
+        const stmt = client_1.db.prepare(`UPDATE PrivacyRule SET ${fields.join(', ')} WHERE id = ?`);
+        stmt.run(...values, id);
     }
 };

@@ -40,8 +40,7 @@ export interface ApiKey {
   name: string;
   key?: string;
   permissions: string[];
-  privacyProfileId: number | null;
-  privacyProfileName?: string;
+  privacyProfileIds: number[];
   createdAt: string | Date;
   lastUsedAt: string | null;
 }
@@ -56,7 +55,7 @@ export interface PrivacyProfile {
 export interface PrivacyRule {
   id: number;
   profileId: number;
-  type: 'LITERAL' | 'REGEX';
+  type: 'LITERAL' | 'REGEX' | 'EMAIL' | 'IBAN' | 'IPV4' | 'PHONE';
   pattern: string;
   replacement: string;
   isActive: boolean;

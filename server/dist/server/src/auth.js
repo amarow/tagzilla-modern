@@ -75,8 +75,8 @@ const authenticateApiKey = async (req, res, next) => {
     req.apiKey = {
         id: apiKeyRecord.id,
         name: apiKeyRecord.name,
-        permissions: apiKeyRecord.permissions.split(','),
-        privacyProfileId: apiKeyRecord.privacyProfileId
+        permissions: apiKeyRecord.permissions,
+        privacyProfileIds: apiKeyRecord.privacyProfileIds
     };
     // Trigger crawler for this user (background)
     crawler_1.crawlerService.initUser(apiKeyRecord.userId).catch(console.error);
