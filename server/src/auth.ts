@@ -88,6 +88,11 @@ export const authenticateApiKey = async (req: Request, res: Response, next: Next
     }
   }
 
+  // Also check query parameter for direct browser access
+  if (!key && req.query.apiKey) {
+    key = req.query.apiKey as string;
+  }
+
   if (!key) return res.status(401).json({ error: 'API key missing' });
 
   const apiKeyRecord = await apiKeyRepository.verify(key);
@@ -131,9 +136,16 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
 export const authenticateAny = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
   const apiKeyHeader = req.headers['x-api-key'];
+  const apiKeyQuery = req.query.apiKey;
   
-  if (apiKeyHeader || (authHeader && authHeader.startsWith('Bearer '))) {
+  if (apiKeyHeader || apiKeyQuery || (authHeader && authHeader.startsWith('Bearer '))) {
     const token = authHeader && authHeader.split(' ')[1];
+    
+    // If we have an explicit API key (header or query), use it
+    if (apiKeyHeader || apiKeyQuery) {
+        return authenticateApiKey(req, res, next);
+    }
+
     // Simple check: if it has 3 parts separated by dots, it's likely a JWT
     if (token && token.split('.').length === 3) {
         return authenticateToken(req, res, next);

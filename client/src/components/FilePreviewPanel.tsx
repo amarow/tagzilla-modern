@@ -71,7 +71,7 @@ export function FilePreviewPanel() {
         token, openFile, openDirectory, language,
         privacyProfiles, fetchPrivacyProfiles, apiKeys, fetchApiKeys,
         setEditingRule, fetchPrivacyRules, setIsPrivacyModalOpen,
-        privacyRefreshCounter
+        privacyRefreshCounter, tags, fetchTags
     } = useAppStore();
     const t = translations[language];
     const [zipContent, setZipContent] = useState<any[] | null>(null);
@@ -83,9 +83,32 @@ export function FilePreviewPanel() {
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
     const [selectedApiKeyId, setSelectedApiKeyId] = useState<string | null>(null);
     const [hasSelection, setHasSelection] = useState(false);
+    
+    // Batch URL Builder States
+    const [batchMode, setBatchMode] = useState<'single' | 'batch'>('single');
+    const [batchTag, setBatchTag] = useState<string | null>(null);
+    const [batchQuery, setBatchQuery] = useState('');
+    const [batchLimit, setBatchLimit] = useState<number>(50);
+    const [responseFormat, setResponseFormat] = useState<'text' | 'json'>('text');
 
     // Look up file in files list OR search results
     const file = files.find(f => f.id === previewFileId) || searchResults.find(f => f.id === previewFileId);
+
+    // Generate dynamic URL
+    const getDynamicUrl = () => {
+        if (!file) return '';
+        const key = apiKeys.find(k => k.id.toString() === selectedApiKeyId)?.key || 'YOUR_KEY';
+        
+        if (batchMode === 'single') {
+            return `${API_BASE}/api/v1/files/${file.id}/text?apiKey=${key}${responseFormat === 'json' ? '&format=json' : ''}`;
+        } else {
+            let endpoint = responseFormat === 'json' ? 'json' : 'text';
+            let url = `${API_BASE}/api/v1/files/${endpoint}?apiKey=${key}&limit=${batchLimit}`;
+            if (batchTag) url += `&tag=${encodeURIComponent(batchTag)}`;
+            if (batchQuery) url += `&q=${encodeURIComponent(batchQuery)}`;
+            return url;
+        }
+    };
 
     // Set defaults
     useEffect(() => {
@@ -226,6 +249,26 @@ export function FilePreviewPanel() {
 
     if (!file) return null;
 
+    // Filter tags based on selected API Key permissions
+    const getAvailableTagsForSelectedKey = () => {
+        const apiKey = apiKeys.find(k => k.id.toString() === selectedApiKeyId);
+        if (!apiKey) return [];
+        
+        // If 'all' permission is present, return all tags
+        if (apiKey.permissions.includes('all')) {
+            return tags.map(t => ({ value: t.name, label: t.name }));
+        }
+
+        // Filter tags by ID if permission like 'tag:ID' exists
+        const allowedTagIds = apiKey.permissions
+            .filter(p => p.startsWith('tag:'))
+            .map(p => parseInt(p.split(':')[1]));
+
+        return tags
+            .filter(t => allowedTagIds.includes(t.id))
+            .map(t => ({ value: t.name, label: t.name }));
+    };
+
     // Main file URL
     const fileUrl = `${API_BASE}/api/files/${file.id}/content?token=${token}`;
     const ext = file.extension.toLowerCase();
@@ -310,38 +353,35 @@ export function FilePreviewPanel() {
                     </div>
                 </Group>
                 <Group>
-                    <Group gap={5}>
+                    <Button.Group>
                         <Button 
-                            variant={viewMode === 'standard' ? "filled" : "subtle"} 
+                            variant={viewMode === 'standard' ? "filled" : "default"} 
                             size="xs"
-                            color={viewMode === 'standard' ? "blue" : "gray"}
                             onClick={() => setViewMode('standard')}
                         >
-                            Standard
+                            {t.standardPreview}
                         </Button>
                         <Button 
-                            variant={viewMode === 'editor' ? "filled" : "subtle"} 
+                            variant={viewMode === 'editor' ? "filled" : "default"} 
                             size="xs"
-                            color={viewMode === 'editor' ? "blue" : "gray"}
                             onClick={() => {
                                 setViewMode('editor');
                                 setRedactedText(null);
                             }}
                         >
-                            Rule Editor
+                            {t.rulesView || 'Rules View'}
                         </Button>
                         <Button 
-                            variant={viewMode === 'preview' ? "filled" : "subtle"} 
+                            variant={viewMode === 'preview' ? "filled" : "default"} 
                             size="xs"
-                            color={viewMode === 'preview' ? "blue" : "gray"}
                             onClick={() => {
                                 setViewMode('preview');
                                 setRedactedText(null);
                             }}
                         >
-                            Export Preview
+                            {t.exportPreview}
                         </Button>
-                    </Group>
+                    </Button.Group>
 
                     <Button 
                         leftSection={<IconFolder size={16} />} 
@@ -408,34 +448,102 @@ export function FilePreviewPanel() {
                                                     </Button>
                                                 </>
                                             ) : (
-                                                <>
-                                                    <Select
-                                                        label="API Key"
-                                                        size="xs"
-                                                        placeholder={t.apiKey}
-                                                        data={apiKeys.map(k => ({ value: k.id.toString(), label: k.name }))}
-                                                        value={selectedApiKeyId}
-                                                        onChange={setSelectedApiKeyId}
-                                                        style={{ width: 250 }}
-                                                    />
-                                                    <Paper withBorder p="4px 8px" bg="var(--mantine-color-dark-8)" style={{ borderRadius: '4px', flex: 1, marginBottom: '2px' }}>
+                                                <Stack gap="xs" style={{ flex: 1 }}>
+                                                    <Group gap="xs" align="flex-end">
+                                                        <Select
+                                                            label="API Key"
+                                                            size="xs"
+                                                            placeholder={t.apiKey}
+                                                            data={apiKeys.map(k => ({ value: k.id.toString(), label: k.name }))}
+                                                            value={selectedApiKeyId}
+                                                            onChange={setSelectedApiKeyId}
+                                                            style={{ width: 150 }}
+                                                        />
+                                                        <Select
+                                                            label="Mode"
+                                                            size="xs"
+                                                            data={[
+                                                                { value: 'single', label: 'Single File' },
+                                                                { value: 'batch', label: 'Full Context' }
+                                                            ]}
+                                                            value={batchMode}
+                                                            onChange={(val) => setBatchMode(val as any)}
+                                                            style={{ width: 130 }}
+                                                        />
+                                                        <Select
+                                                            label="Format"
+                                                            size="xs"
+                                                            data={[
+                                                                { value: 'text', label: 'Text' },
+                                                                { value: 'json', label: 'JSON' }
+                                                            ]}
+                                                            value={responseFormat}
+                                                            onChange={(val) => setResponseFormat(val as any)}
+                                                            style={{ width: 85 }}
+                                                        />
+                                                        {batchMode === 'batch' && (
+                                                            <>
+                                                                <Select
+                                                                    label="Filter Tag"
+                                                                    size="xs"
+                                                                    clearable
+                                                                    placeholder="Select allowed tag..."
+                                                                    data={getAvailableTagsForSelectedKey()}
+                                                                    value={batchTag}
+                                                                    onChange={setBatchTag}
+                                                                    style={{ width: 150 }}
+                                                                />
+                                                                <Select
+                                                                    label="Limit"
+                                                                    size="xs"
+                                                                    data={[
+                                                                        { value: '10', label: '10' },
+                                                                        { value: '50', label: '50' },
+                                                                        { value: '100', label: '100' },
+                                                                        { value: '200', label: '200' }
+                                                                    ]}
+                                                                    value={batchLimit.toString()}
+                                                                    onChange={(val) => setBatchLimit(parseInt(val || '50'))}
+                                                                    style={{ width: 80 }}
+                                                                />
+                                                                <div style={{ flex: 1 }}>
+                                                                    <Text size="xs" fw={500} mb={3}>Search Query</Text>
+                                                                    <input 
+                                                                        value={batchQuery}
+                                                                        onChange={(e) => setBatchQuery(e.target.value)}
+                                                                        placeholder="Search in context..."
+                                                                        style={{ 
+                                                                            width: '100%', 
+                                                                            height: '30px', 
+                                                                            fontSize: '12px',
+                                                                            padding: '0 8px',
+                                                                            borderRadius: '4px',
+                                                                            border: '1px solid var(--mantine-color-default-border)',
+                                                                            background: 'transparent',
+                                                                            color: 'inherit'
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </Group>
+                                                    <Paper withBorder p="4px 8px" bg="var(--mantine-color-dark-8)" style={{ borderRadius: '4px' }}>
                                                         <Group gap="xs" wrap="nowrap">
                                                             <Text size="xs" c="blue" fw={700} style={{ flexShrink: 0 }}>GET</Text>
                                                             <Text 
                                                                 size="xs" 
                                                                 component="a" 
-                                                                href={`${window.location.origin}/api/v1/files/${file.id}/text?apiKey=${apiKeys.find(k => k.id.toString() === selectedApiKeyId)?.key || 'YOUR_KEY'}`}
+                                                                href={getDynamicUrl()}
                                                                 target="_blank"
                                                                 style={{ wordBreak: 'break-all', fontFamily: 'monospace', textDecoration: 'none', color: 'inherit', cursor: 'pointer', flex: 1 }}
                                                             >
-                                                                {`${window.location.origin}/api/v1/files/${file.id}/text?apiKey=...`}
+                                                                {getDynamicUrl().replace(/apiKey=tz_[a-f0-9]+/, 'apiKey=...')}
                                                             </Text>
                                                             <ActionIcon 
                                                                 size="xs" 
                                                                 variant="subtle" 
                                                                 onClick={() => {
-                                                                    const url = `${window.location.origin}/api/v1/files/${file.id}/text?apiKey=${apiKeys.find(k => k.id.toString() === selectedApiKeyId)?.key || ''}`;
-                                                                    navigator.clipboard.writeText(url);
+                                                                    navigator.clipboard.writeText(getDynamicUrl());
                                                                     notifications.show({ message: 'URL copied to clipboard', color: 'blue', size: 'xs' });
                                                                 }}
                                                             >
@@ -443,14 +551,14 @@ export function FilePreviewPanel() {
                                                             </ActionIcon>
                                                         </Group>
                                                     </Paper>
-                                                </>
+                                                </Stack>
                                             )}
                                         </Group>
                                     </Stack>
                                     <RedactedContent 
                                         html={redactedText || ''} 
                                         onSelectionChange={handleSelectionChange}
-                                        onRedactedClick={viewMode === 'editor' ? handleRedactedClick : () => {}}
+                                        onRedactedClick={handleRedactedClick}
                                     />
                                 </Paper>
                             </div>

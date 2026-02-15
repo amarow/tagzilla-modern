@@ -26,6 +26,137 @@ export const PublicController = {
         }
     },
 
+    async getAllFilesText(req: Request, res: Response) {
+        try {
+            const userId = (req as AuthRequest).user!.id;
+            const apiKey = (req as AuthRequest).apiKey;
+            const { tag, q, limit } = req.query as { tag?: string, q?: string, limit?: string };
+            
+            const fileLimit = Math.min(parseInt(limit || '50'), 200);
+            const maxResponseSize = 10 * 1024 * 1024; // 10MB limit
+
+            let allowedTagIds: number[] | undefined = undefined;
+            if (apiKey) {
+                allowedTagIds = apiKey.permissions
+                    .filter(p => p.startsWith('tag:'))
+                    .map(p => parseInt(p.split(':')[1]))
+                    .filter(id => !isNaN(id));
+            }
+
+            // Get files based on tag, search query, or all
+            let files: any[] = [];
+            if (tag) {
+                const tagObj = db.prepare('SELECT id FROM Tag WHERE userId = ? AND name = ?').get(userId, tag) as { id: number };
+                if (tagObj) {
+                    files = await fileRepository.getAll(userId, [tagObj.id]);
+                }
+            } else if (q) {
+                files = await searchRepository.search(userId, { content: q });
+            } else {
+                files = await fileRepository.getAll(userId, allowedTagIds);
+            }
+
+            // Apply slice for limit
+            files = files.slice(0, fileLimit);
+            
+            let fullContext = "";
+            for (const file of files) {
+                if (fullContext.length > maxResponseSize) {
+                    fullContext += `\n\n[WARNING: Response truncated due to size limit]\n`;
+                    break;
+                }
+
+                try {
+                    if (!['.pdf', '.docx', '.txt', '.md', '.odt', '.rtf'].includes(file.extension.toLowerCase())) continue;
+                    
+                    let text = await fileService.extractText(file.path, file.extension);
+                    if (apiKey && apiKey.privacyProfileIds && apiKey.privacyProfileIds.length > 0) {
+                        text = await privacyService.redactWithMultipleProfiles(text, apiKey.privacyProfileIds);
+                    }
+                    fullContext += `\n=== SOURCE: ${file.name} (ID: ${file.id}) ===\n${text}\n`;
+                } catch (err: any) {
+                    fullContext += `\n=== SOURCE: ${file.name} (ID: ${file.id}) ===\n[Error extracting text: ${err.message}]\n`;
+                }
+            }
+            
+            res.setHeader('Content-Type', 'text/plain');
+            res.send(fullContext);
+        } catch (e: any) {
+            res.status(500).json({ error: e.message });
+        }
+    },
+
+    async getAllFilesJson(req: Request, res: Response) {
+        try {
+            const userId = (req as AuthRequest).user!.id;
+            const apiKey = (req as AuthRequest).apiKey;
+            const { tag, q, limit } = req.query as { tag?: string, q?: string, limit?: string };
+            
+            const fileLimit = Math.min(parseInt(limit || '50'), 200);
+            const maxContentSize = 5 * 1024 * 1024; // 5MB per batch for JSON
+
+            let allowedTagIds: number[] | undefined = undefined;
+            if (apiKey) {
+                allowedTagIds = apiKey.permissions
+                    .filter(p => p.startsWith('tag:'))
+                    .map(p => parseInt(p.split(':')[1]))
+                    .filter(id => !isNaN(id));
+            }
+
+            // Get files
+            let files: any[] = [];
+            if (tag) {
+                const tagObj = db.prepare('SELECT id FROM Tag WHERE userId = ? AND name = ?').get(userId, tag) as { id: number };
+                if (tagObj) {
+                    files = await fileRepository.getAll(userId, [tagObj.id]);
+                }
+            } else if (q) {
+                files = await searchRepository.search(userId, { content: q });
+            } else {
+                files = await fileRepository.getAll(userId, allowedTagIds);
+            }
+
+            files = files.slice(0, fileLimit);
+            
+            const results = [];
+            let currentTotalSize = 0;
+
+            for (const file of files) {
+                if (currentTotalSize > maxContentSize) break;
+
+                try {
+                    if (!['.pdf', '.docx', '.txt', '.md', '.odt', '.rtf'].includes(file.extension.toLowerCase())) {
+                        results.push({ ...file, content: null, status: 'skipped (non-text)' });
+                        continue;
+                    }
+
+                    let text = await fileService.extractText(file.path, file.extension);
+                    if (apiKey && apiKey.privacyProfileIds && apiKey.privacyProfileIds.length > 0) {
+                        text = await privacyService.redactWithMultipleProfiles(text, apiKey.privacyProfileIds);
+                    }
+                    
+                    currentTotalSize += text.length;
+                    results.push({
+                        ...file,
+                        content: text,
+                        status: 'ok'
+                    });
+                } catch (err: any) {
+                    results.push({
+                        ...file,
+                        content: null,
+                        status: 'error',
+                        error: err.message
+                    });
+                }
+            }
+            
+            res.json(results);
+        } catch (e: any) {
+            res.status(500).json({ error: e.message });
+        }
+    },
+
     async getTags(req: Request, res: Response) {
         try {
             const userId = (req as AuthRequest).user!.id;
@@ -66,6 +197,7 @@ export const PublicController = {
             const apiKey = (req as AuthRequest).apiKey;
             const { profileId, format } = req.query;
             const asHtml = format === 'html';
+            const asJson = format === 'json';
             
             let allowedTagIds: number[] | undefined = undefined;
             if (apiKey) {
@@ -75,8 +207,8 @@ export const PublicController = {
                     .filter(id => !isNaN(id));
             }
 
-            const sql = `SELECT f.path, f.extension FROM FileHandle f JOIN Scope s ON f.scopeId = s.id WHERE f.id = ? AND s.userId = ?`;
-            const file = db.prepare(sql).get(id, userId) as { path: string, extension: string };
+            const sql = `SELECT f.path, f.name, f.extension, f.mimeType, f.size FROM FileHandle f JOIN Scope s ON f.scopeId = s.id WHERE f.id = ? AND s.userId = ?`;
+            const file = db.prepare(sql).get(id, userId) as { path: string, name: string, extension: string, mimeType: string, size: number };
             
             if (!file) return res.status(404).json({ error: 'File not found' });
 
@@ -102,6 +234,17 @@ export const PublicController = {
             } else if (asHtml) {
                 // If HTML requested but no redaction, still escape it
                 text = await privacyService.redactWithMultipleProfiles(text, [], true);
+            }
+
+            if (asJson) {
+                return res.json({
+                    id: parseInt(id as string),
+                    name: file.name,
+                    extension: file.extension,
+                    mimeType: file.mimeType,
+                    size: file.size,
+                    content: text
+                });
             }
 
             res.setHeader('Content-Type', asHtml ? 'text/html' : 'text/plain');
