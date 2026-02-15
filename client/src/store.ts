@@ -34,7 +34,7 @@ export const useAppStore = create<AppState>()(
       ...createSettingsSlice(...a),
     }),
     {
-      name: 'tagzilla-auth-storage-v2', 
+      name: 'scrinia-auth-storage-v2', 
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({ 
         token: state.token,

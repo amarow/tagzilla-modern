@@ -1,4 +1,4 @@
-# Entwicklungsplan: Tagzilla Modern
+# Entwicklungsplan: Scrinia
 
 ## Übergeordnetes Ziel
 - Modernes Dokumenten-Management-System (DMS) für lokale Dateien.

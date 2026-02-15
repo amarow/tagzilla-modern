@@ -26,7 +26,7 @@ app.use(express.json({ limit: '50mb' }));
 
 // --- Public Routes ---
 app.get('/', (req, res) => {
-  res.send('Tagzilla Backend is running!');
+  res.send('Scrinia Backend is running!');
 });
 
 // --- Register Modular Routes ---

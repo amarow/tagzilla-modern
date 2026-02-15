@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "Starting Tagzilla Modern..."
+echo "Starting Scrinia..."
 
 # Start Backend
 echo "Starting Backend on port 3001..."

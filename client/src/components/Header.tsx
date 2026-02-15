@@ -3,7 +3,7 @@ import { IconSearch, IconX, IconSettings, IconLogout } from '@tabler/icons-react
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { translations } from '../i18n';
-import { TagzillaLogo } from './Logo';
+import { ScriniaLogo } from './Logo';
 
 interface HeaderProps {
   opened: boolean;
@@ -22,10 +22,9 @@ export const Header = ({ opened, toggle }: HeaderProps) => {
 
   const logo = (
     <Group gap="xs" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>
-      <TagzillaLogo size={32} showText={false} />
+      <ScriniaLogo size={32} showText={false} />
       <Group gap={0}>
-        <Text fw={900} size="lg" c="green.8" style={{ letterSpacing: -0.5 }}>Tag</Text>
-        <Text fw={900} size="lg" c="blue.7" style={{ letterSpacing: -0.5 }}>Zilla</Text>
+        <Text fw={900} size="lg" c="blue.7" style={{ letterSpacing: -0.5 }}>Scrinia</Text>
       </Group>
     </Group>
   );

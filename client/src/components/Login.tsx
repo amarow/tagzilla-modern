@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Container, Card, Center, Stack, Alert, TextInput, PasswordInput, Button, Text } from '@mantine/core';
 import { useAppStore } from '../store';
 import { translations } from '../i18n';
-import { TagzillaLogo } from './Logo';
+import { ScriniaLogo } from './Logo';
 
 export const Login = () => {
   const { login, register, isLoading, error: storeError, language } = useAppStore();
@@ -26,7 +26,7 @@ export const Login = () => {
     <Container size="xs" mt="xl">
         <Card withBorder shadow="sm" p="xl" radius="md">
             <Center mb="xl">
-              <TagzillaLogo size={120} />
+              <ScriniaLogo size={120} />
             </Center>
             <Stack>
                 {storeError && <Alert color="red" title="Error">{storeError}</Alert>}

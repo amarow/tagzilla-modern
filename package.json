@@ -1,0 +1,28 @@
+{
+  "name": "scrinia-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scrinia - A privacy-first, tag-based document management system with local AI intelligence.",
+  "workspaces": [
+    "client",
+    "server",
+    "shared"
+  ],
+  "scripts": {
+    "start": "./start.sh",
+    "dev:client": "npm run dev --workspace=@scrinia/client",
+    "dev:server": "npm run dev --workspace=@scrinia/server",
+    "build:client": "npm run build --workspace=@scrinia/client",
+    "build:server": "npm run build --workspace=@scrinia/server",
+    "install:all": "npm install"
+  },
+  "keywords": [
+    "scrinia",
+    "dms",
+    "privacy",
+    "tagging",
+    "ai"
+  ],
+  "author": "",
+  "license": "ISC"
+}
