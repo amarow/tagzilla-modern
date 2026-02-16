@@ -4,6 +4,7 @@ import { API_BASE, authFetch } from '../utils';
 
 export interface FileSlice {
   files: FileHandle[];
+  filteredFilesCount: number;
   selectedFileIds: number[];
   previewFileId: number | null;
   
@@ -14,18 +15,22 @@ export interface FileSlice {
   removeTagFromMultipleFiles: (fileIds: number[], tagId: number) => Promise<void>;
   openFile: (fileId: number) => Promise<void>;
   openDirectory: (fileId: number) => Promise<void>;
+  pickDirectory: () => Promise<string | null>;
   setPreviewFileId: (id: number | null) => void;
   toggleFileSelection: (fileId: number) => void;
   setFileSelection: (fileIds: number[]) => void;
   clearFileSelection: () => void;
+  setFilteredFilesCount: (count: number) => void;
 }
 
 export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) => ({
   files: [],
+  filteredFilesCount: 0,
   selectedFileIds: [],
   previewFileId: null,
 
   setPreviewFileId: (id) => set({ previewFileId: id }),
+  setFilteredFilesCount: (count) => set({ filteredFilesCount: count }),
 
   fetchFiles: async () => {
     set({ isLoading: true });
@@ -177,6 +182,19 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
     } catch (error) {
       console.error('Failed to open directory', error);
     }
+  },
+
+  pickDirectory: async () => {
+    try {
+      const res = await authFetch(`${API_BASE}/api/fs/pick-directory`, get().token, { method: 'POST' });
+      if (res.ok) {
+          const data = await res.json();
+          return data.path;
+      }
+    } catch (e) {
+        console.error('Failed to pick directory', e);
+    }
+    return null;
   },
 
   toggleFileSelection: (fileId) => {

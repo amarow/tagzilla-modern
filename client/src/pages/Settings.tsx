@@ -10,10 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { translations } from '../i18n';
 
 // Sub-components
-import { ScopeSettings } from '../components/settings/ScopeSettings';
 import { SecuritySettings } from '../components/settings/SecuritySettings';
-import { ApiKeySettings } from '../components/settings/ApiKeySettings';
-import { PrivacySettings } from '../components/settings/PrivacySettings';
 
 export function SettingsPage() {
     const { language, user } = useAppStore();
@@ -24,7 +21,7 @@ export function SettingsPage() {
     return (
         <Paper 
             style={{ 
-                height: 'calc(100vh - 100px)', 
+                height: 'calc(100vh - 60px)', 
                 display: 'flex', 
                 flexDirection: 'column', 
                 overflow: 'hidden',
@@ -73,10 +70,7 @@ export function SettingsPage() {
                         </Group>
                     </Card>
                     
-                    <ScopeSettings />
                     <SecuritySettings />
-                    <ApiKeySettings />
-                    <PrivacySettings />
                 </Container>
             </div>
         </Paper>

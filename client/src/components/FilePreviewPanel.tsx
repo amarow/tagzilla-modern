@@ -71,7 +71,7 @@ export function FilePreviewPanel() {
         token, openFile, openDirectory, language,
         privacyProfiles, fetchPrivacyProfiles, apiKeys, fetchApiKeys,
         setEditingRule, fetchPrivacyRules, setIsPrivacyModalOpen,
-        privacyRefreshCounter, tags, fetchTags
+        privacyRefreshCounter, tags, fetchTags, activeMainTab
     } = useAppStore();
     const t = translations[language];
     const [zipContent, setZipContent] = useState<any[] | null>(null);
@@ -79,6 +79,13 @@ export function FilePreviewPanel() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'standard' | 'editor' | 'preview'>('standard');
+
+    // Force standard view in filter tab
+    useEffect(() => {
+        if (activeMainTab === 'filter') {
+            setViewMode('standard');
+        }
+    }, [activeMainTab]);
     const [redactedText, setRedactedText] = useState<string | null>(null);
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
     const [selectedApiKeyId, setSelectedApiKeyId] = useState<string | null>(null);
@@ -338,35 +345,37 @@ export function FilePreviewPanel() {
                     </div>
                 </Group>
                 <Group>
-                    <Button.Group>
-                        <Button 
-                            variant={viewMode === 'standard' ? "filled" : "default"} 
-                            size="xs"
-                            onClick={() => setViewMode('standard')}
-                        >
-                            {t.standardPreview}
-                        </Button>
-                        <Button 
-                            variant={viewMode === 'editor' ? "filled" : "default"} 
-                            size="xs"
-                            onClick={() => {
-                                setViewMode('editor');
-                                setRedactedText(null);
-                            }}
-                        >
-                            {t.rulesView || 'Rules View'}
-                        </Button>
-                        <Button 
-                            variant={viewMode === 'preview' ? "filled" : "default"} 
-                            size="xs"
-                            onClick={() => {
-                                setViewMode('preview');
-                                setRedactedText(null);
-                            }}
-                        >
-                            {t.exportPreview}
-                        </Button>
-                    </Button.Group>
+                    {activeMainTab !== 'filter' && (
+                        <Button.Group>
+                            <Button 
+                                variant={viewMode === 'standard' ? "filled" : "default"} 
+                                size="xs"
+                                onClick={() => setViewMode('standard')}
+                            >
+                                {t.standardPreview}
+                            </Button>
+                            <Button 
+                                variant={viewMode === 'editor' ? "filled" : "default"} 
+                                size="xs"
+                                onClick={() => {
+                                    setViewMode('editor');
+                                    setRedactedText(null);
+                                }}
+                            >
+                                {t.rulesView || 'Rules View'}
+                            </Button>
+                            <Button 
+                                variant={viewMode === 'preview' ? "filled" : "default"} 
+                                size="xs"
+                                onClick={() => {
+                                    setViewMode('preview');
+                                    setRedactedText(null);
+                                }}
+                            >
+                                {t.exportPreview}
+                            </Button>
+                        </Button.Group>
+                    )}
 
                     <Button 
                         leftSection={<IconFolder size={16} />} 

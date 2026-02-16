@@ -6,16 +6,18 @@ import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, type Dra
 import { Routes, Route } from 'react-router-dom';
 import { HomePage } from './pages/Home';
 import { SettingsPage } from './pages/Settings';
-import { ContextExportPage } from './pages/ContextExport';
+import { DataPage } from './pages/DataPage';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
+import { DataSidebar } from './components/DataSidebar';
 import { Login } from './components/Login';
 import { PrivacyRulesModal } from './components/settings/PrivacyRulesModal';
 
 export default function App() {
   const [opened, { toggle }] = useDisclosure();
   const { 
-    isAuthenticated, init, selectedFileIds, addTagToMultipleFiles, addTagToFile 
+    isAuthenticated, init, selectedFileIds, addTagToMultipleFiles, addTagToFile,
+    activeMainTab 
   } = useAppStore();
   
   const [activeDragItem, setActiveDragItem] = useState<any>(null);
@@ -48,6 +50,32 @@ export default function App() {
     const activeId = active.data.current?.id;
     const overId = over.data.current?.id;
 
+    // DATA VIEW DND LOGIC
+    if (overType === 'API_KEY_TARGET') {
+        const apiKey = useAppStore.getState().apiKeys.find(k => k.id === overId);
+        if (!apiKey) return;
+
+        if (activeType === 'TAG') {
+            const tagId = activeId;
+            const currentTags = apiKey.permissions.filter(p => p.startsWith('tag:')).map(p => p.split(':')[1]);
+            if (!currentTags.includes(String(tagId))) {
+                const newPerms = [...apiKey.permissions, `tag:${tagId}`].join(',');
+                useAppStore.getState().updateApiKey(apiKey.id, { permissions: newPerms as any });
+            }
+        }
+
+        if (activeType === 'RULESET') {
+            const rulesetId = activeId;
+            const currentProfiles = apiKey.privacyProfileIds || [];
+            if (!currentProfiles.includes(Number(rulesetId))) {
+                const newProfiles = [...currentProfiles, Number(rulesetId)];
+                useAppStore.getState().updateApiKey(apiKey.id, { privacyProfileIds: newProfiles });
+            }
+        }
+        return;
+    }
+
+    // FILTER VIEW DND LOGIC
     if (activeType === 'TAG' && overType === 'FILE_TARGET') {
         const tagName = active.data.current?.name;
         if (tagName && overId) {
@@ -80,20 +108,25 @@ export default function App() {
       <AppShell
         header={{ height: 60 }}
         navbar={{
-          width: 300,
+          width: activeMainTab === 'filter' ? 300 : 250,
           breakpoint: 'sm',
           collapsed: { mobile: !opened },
         }}
         padding="md"
       >
         <Header opened={opened} toggle={toggle} />
-        <Sidebar />
+        
+        <AppShell.Navbar>
+          {activeMainTab === 'filter' ? <Sidebar /> : <DataSidebar />}
+        </AppShell.Navbar>
 
         <AppShell.Main>
           <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/export/:keyId" element={<ContextExportPage />} />
+              <Route path="/data" element={<DataPage />} />
+              <Route path="/data/key/:keyId" element={<DataPage />} />
+              <Route path="/data/ruleset/:rulesetId" element={<DataPage />} />
           </Routes>
         </AppShell.Main>
         

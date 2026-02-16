@@ -69,7 +69,7 @@ export const privacyService = {
 
         const color = getRuleColor(rule.id);
         const replacement = asHtml 
-            ? `<span style="${getRedactedStyle(color)}" data-rule-id="${rule.id}" data-profile-id="${profileId}" class="redacted-text">${escapeHtml(rule.replacement)}</span>`
+            ? `<span style='${getRedactedStyle(color)}' data-rule-id='${rule.id}' data-profile-id='${profileId}' class='redacted-text'>${escapeHtml(rule.replacement)}</span>`
             : rule.replacement;
 
         redactedText = redactedText.replace(regex, replacement);
@@ -106,7 +106,7 @@ export const privacyService = {
 
           const color = getRuleColor(rule.id);
           const replacement = asHtml 
-            ? `<span style="${getRedactedStyle(color)}" data-rule-id="${rule.id}" data-profile-id="${profileId}" class="redacted-text">${escapeHtml(rule.replacement)}</span>`
+            ? `<span style='${getRedactedStyle(color)}' data-rule-id='${rule.id}' data-profile-id='${profileId}' class='redacted-text'>${escapeHtml(rule.replacement)}</span>`
             : rule.replacement;
 
           result = result.replace(regex, replacement);

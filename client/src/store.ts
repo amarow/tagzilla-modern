@@ -17,11 +17,13 @@ import { createSearchSlice } from './store/slices/search.slice';
 import type { SearchSlice } from './store/slices/search.slice';
 import { createSettingsSlice } from './store/slices/settings.slice';
 import type { SettingsSlice } from './store/slices/settings.slice';
+import { createAppSlice } from './store/slices/app.slice';
+import type { AppSlice } from './store/slices/app.slice';
 
 // Re-export types for convenience
 export type { FileHandle, Tag, Scope, User, ApiKey, PrivacyProfile, PrivacyRule, SearchCriteria };
 
-export type AppState = AuthSlice & FileSlice & TagSlice & ScopeSlice & SearchSlice & SettingsSlice;
+export type AppState = AuthSlice & FileSlice & TagSlice & ScopeSlice & SearchSlice & SettingsSlice & AppSlice;
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -32,6 +34,7 @@ export const useAppStore = create<AppState>()(
       ...createScopeSlice(...a),
       ...createSearchSlice(...a),
       ...createSettingsSlice(...a),
+      ...createAppSlice(...a),
     }),
     {
       name: 'scrinia-auth-storage-v2', 

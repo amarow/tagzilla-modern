@@ -1,5 +1,5 @@
-import { Group, Text, Loader, Alert, Stack, Badge, Table, ActionIcon, Button, Center, Checkbox, Tooltip, LoadingOverlay } from '@mantine/core';
-import { IconFiles, IconAlertCircle, IconX, IconHammer, IconRefresh, IconExternalLink, IconFolder } from '@tabler/icons-react';
+import { Group, Text, Loader, Alert, Stack, Badge, Table, ActionIcon, Button, Center, Checkbox, Tooltip, LoadingOverlay, TextInput, Paper } from '@mantine/core';
+import { IconFiles, IconAlertCircle, IconX, IconHammer, IconRefresh, IconExternalLink, IconFolder, IconSearch, IconFilter } from '@tabler/icons-react';
 import { useState, useRef, useMemo } from 'react';
 import { useAppStore } from '../store';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -13,10 +13,11 @@ export function HomePage() {
   const { 
     files, isLoading, error, 
     activeScopeIds, selectedTagIds, 
-    searchCriteria, searchResults, isSearching, 
+    searchCriteria, searchResults, isSearching, setSearchCriteria, performSearch,
     selectedFileIds, toggleFileSelection, setFileSelection, clearFileSelection,
     removeTagFromFile, language, refreshAllScopes,
-    setPreviewFileId, previewFileId, openFile, openDirectory
+    setPreviewFileId, previewFileId, openFile, openDirectory,
+    setFilteredFilesCount
   } = useAppStore();
 
   const t = translations[language];
@@ -54,7 +55,7 @@ export function HomePage() {
 
     console.log(`[HomePage] Filtering ${sourceFiles.length} files...`);
     
-    return sourceFiles.filter(file => {
+    const result = sourceFiles.filter(file => {
       // Logic:
       // 1. Scope Match
       const matchesScope = activeScopeIds.length > 0 ? activeScopeIds.includes(file.scopeId) : false;
@@ -65,13 +66,13 @@ export function HomePage() {
         ? file.tags.some((t: any) => selectedTagIds.includes(t.id)) 
         : true;
       
-      // 3. Client-side fallback for Filename/Path if we are just filtering the main list
-      // (Though usually searchResults handles this, this helps if we haven't searched yet or are just filtering locally)
-      // But if we rely on searchResults, we assume they satisfy criteria.
-      
       return matchesScope && matchesTag;
     });
-  }, [files, searchResults, searchCriteria, activeScopeIds, selectedTagIds, isSearching]);
+
+    // Update global count for header
+    setTimeout(() => setFilteredFilesCount(result.length), 0);
+    return result;
+  }, [files, searchResults, searchCriteria, activeScopeIds, selectedTagIds, isSearching, setFilteredFilesCount]);
 
   const sortedFiles = useMemo(() => {
     console.log(`[HomePage] Sorting ${filteredFiles.length} files...`);
@@ -144,21 +145,95 @@ export function HomePage() {
         </div>
 
         <div style={{ display: previewFileId ? 'none' : 'block' }}>
-            <Group mb="md" justify="space-between">
-            <Group>
-                <IconFiles size={20} />
-                <Text fw={500}>
-                    {t.files} ({filteredFiles.length} / {files.length})
-                </Text>
-                {selectedFileIds.length > 0 && <Badge color="violet">{t.selected.replace('{count}', selectedFileIds.length.toString())}</Badge>}
-                
-                <Tooltip label="Rescan active folders">
-                    <ActionIcon variant="light" color="gray" size="sm" onClick={() => refreshAllScopes()} loading={isLoading}>
-                        <IconRefresh size={14} />
-                    </ActionIcon>
-                </Tooltip>
-            </Group>
-            </Group>
+            <Paper withBorder p="xs" mb="md" radius="sm" shadow="xs">
+                <Group justify="space-between">
+                    <Group gap="xl">
+                        <Group gap="xs">
+                            <IconFiles size={20} c="blue" />
+                            <Text fw={700} size="sm">
+                                {filteredFiles.length} / {files.length} {t.files}
+                            </Text>
+                            {selectedFileIds.length > 0 && (
+                                <Badge color="violet" variant="filled">
+                                    {t.selected.replace('{count}', selectedFileIds.length.toString())}
+                                </Badge>
+                            )}
+                        </Group>
+
+                        <form action="." autoComplete="off" onSubmit={(e) => { e.preventDefault(); performSearch(); }} style={{ flex: 1 }}>
+                            <Group gap="xs">
+                                <TextInput 
+                                    placeholder={t.searchModeDirectory || 'Verzeichnis'}
+                                    leftSection={<IconSearch size={14} />}
+                                    style={{ width: 160 }}
+                                    value={searchCriteria.directory}
+                                    disabled={!searchCriteria.enabled}
+                                    size="xs"
+                                    onChange={(e) => setSearchCriteria({ directory: e.currentTarget.value })}
+                                    onKeyDown={(e) => e.key === 'Enter' && performSearch()}
+                                    rightSection={
+                                        searchCriteria.directory ? (
+                                            <ActionIcon variant="transparent" c="dimmed" size="xs" onClick={() => setSearchCriteria({ directory: '' })}>
+                                                <IconX size={12} />
+                                            </ActionIcon>
+                                        ) : null
+                                    }
+                                />
+
+                                <TextInput 
+                                    placeholder={t.name || 'Dateiname'}
+                                    leftSection={<IconSearch size={14} />}
+                                    style={{ width: 160 }}
+                                    value={searchCriteria.filename}
+                                    disabled={!searchCriteria.enabled}
+                                    size="xs"
+                                    onChange={(e) => setSearchCriteria({ filename: e.currentTarget.value })}
+                                    onKeyDown={(e) => e.key === 'Enter' && performSearch()}
+                                    rightSection={
+                                        searchCriteria.filename ? (
+                                            <ActionIcon variant="transparent" c="dimmed" size="xs" onClick={() => setSearchCriteria({ filename: '' })}>
+                                                <IconX size={12} />
+                                            </ActionIcon>
+                                        ) : null
+                                    }
+                                />
+
+                                <TextInput 
+                                    placeholder={t.searchContent || 'Inhalt'}
+                                    leftSection={<IconSearch size={14} />}
+                                    style={{ flex: 1, minWidth: 200 }}
+                                    value={searchCriteria.content}
+                                    disabled={!searchCriteria.enabled}
+                                    size="xs"
+                                    onChange={(e) => setSearchCriteria({ content: e.currentTarget.value })}
+                                    onKeyDown={(e) => e.key === 'Enter' && performSearch()}
+                                    rightSection={
+                                        searchCriteria.content ? (
+                                            <ActionIcon variant="transparent" c="dimmed" size="xs" onClick={() => setSearchCriteria({ content: '' })}>
+                                                <IconX size={12} />
+                                            </ActionIcon>
+                                        ) : null
+                                    }
+                                />
+
+                                <Button 
+                                    variant={searchCriteria.enabled ? "filled" : "default"}
+                                    size="xs"
+                                    onClick={() => setSearchCriteria({ enabled: !searchCriteria.enabled })}
+                                >
+                                    {searchCriteria.enabled ? t.on : t.off}
+                                </Button>
+                            </Group>
+                        </form>
+                    </Group>
+
+                    <Tooltip label="Rescan active folders">
+                        <ActionIcon variant="light" color="gray" size="md" onClick={() => refreshAllScopes()} loading={isLoading}>
+                            <IconRefresh size={18} />
+                        </ActionIcon>
+                    </Tooltip>
+                </Group>
+            </Paper>
 
             {error && (
             <Alert icon={<IconAlertCircle size={16} />} title="Error" color="red" mb="md">

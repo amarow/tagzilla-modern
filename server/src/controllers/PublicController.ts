@@ -30,7 +30,8 @@ export const PublicController = {
         try {
             const userId = (req as AuthRequest).user!.id;
             const apiKey = (req as AuthRequest).apiKey;
-            const { tag, q, limit } = req.query as { tag?: string, q?: string, limit?: string };
+            const { tag, q, limit, format } = req.query as { tag?: string, q?: string, limit?: string, format?: string };
+            const asHtml = format === 'html';
             
             const fileLimit = Math.min(parseInt(limit || '50'), 200);
             const maxResponseSize = 10 * 1024 * 1024; // 10MB limit
@@ -71,15 +72,25 @@ export const PublicController = {
                     
                     let text = await fileService.extractText(file.path, file.extension);
                     if (apiKey && apiKey.privacyProfileIds && apiKey.privacyProfileIds.length > 0) {
-                        text = await privacyService.redactWithMultipleProfiles(text, apiKey.privacyProfileIds);
+                        text = await privacyService.redactWithMultipleProfiles(text, apiKey.privacyProfileIds, asHtml);
+                    } else if (asHtml) {
+                        text = await privacyService.redactWithMultipleProfiles(text, [], true);
                     }
-                    fullContext += `\n=== SOURCE: ${file.name} (ID: ${file.id}) ===\n${text}\n`;
+
+                    if (asHtml) {
+                        fullContext += `<div style="margin-bottom: 2rem; border-bottom: 1px solid #eee; padding-bottom: 1rem;">
+                            <h3 style="margin: 0 0 0.5rem 0; font-family: sans-serif;">SOURCE: ${file.name} (ID: ${file.id})</h3>
+                            <pre style="white-space: pre-wrap; font-family: monospace; font-size: 13px;">${text}</pre>
+                        </div>`;
+                    } else {
+                        fullContext += `\n=== SOURCE: ${file.name} (ID: ${file.id}) ===\n${text}\n`;
+                    }
                 } catch (err: any) {
                     fullContext += `\n=== SOURCE: ${file.name} (ID: ${file.id}) ===\n[Error extracting text: ${err.message}]\n`;
                 }
             }
             
-            res.setHeader('Content-Type', 'text/plain');
+            res.setHeader('Content-Type', asHtml ? 'text/html' : 'text/plain');
             res.send(fullContext);
         } catch (e: any) {
             res.status(500).json({ error: e.message });
@@ -90,7 +101,8 @@ export const PublicController = {
         try {
             const userId = (req as AuthRequest).user!.id;
             const apiKey = (req as AuthRequest).apiKey;
-            const { tag, q, limit } = req.query as { tag?: string, q?: string, limit?: string };
+            const { tag, q, limit, format } = req.query as { tag?: string, q?: string, limit?: string, format?: string };
+            const asHtml = format === 'html';
             
             const fileLimit = Math.min(parseInt(limit || '50'), 200);
             const maxContentSize = 5 * 1024 * 1024; // 5MB per batch for JSON
@@ -132,7 +144,9 @@ export const PublicController = {
 
                     let text = await fileService.extractText(file.path, file.extension);
                     if (apiKey && apiKey.privacyProfileIds && apiKey.privacyProfileIds.length > 0) {
-                        text = await privacyService.redactWithMultipleProfiles(text, apiKey.privacyProfileIds);
+                        text = await privacyService.redactWithMultipleProfiles(text, apiKey.privacyProfileIds, asHtml);
+                    } else if (asHtml) {
+                        text = await privacyService.redactWithMultipleProfiles(text, [], true);
                     }
                     
                     currentTotalSize += text.length;

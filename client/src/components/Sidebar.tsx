@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { AppShell, Stack, Group, Text, TextInput, ActionIcon, ScrollArea, Button, Modal, ColorSwatch, Box } from '@mantine/core';
-import { IconPlus, IconPencil, IconTrash, IconCheck } from '@tabler/icons-react';
+import { useState, useEffect } from 'react';
+import { AppShell, Stack, Group, Text, TextInput, ActionIcon, ScrollArea, Button, Modal, ColorSwatch, Box, Checkbox, Divider, Tooltip } from '@mantine/core';
+import { IconPlus, IconPencil, IconTrash, IconCheck, IconFolder, IconTag, IconDatabase } from '@tabler/icons-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { translations } from '../i18n';
 import { TagItem } from './DndComponents';
 import { modals } from '@mantine/modals';
+import { DirectoryPickerModal } from './DirectoryPickerModal';
 
 const TAG_COLORS = [
     '#fa5252', '#fd7e14', '#fab005', '#40c057', '#228be6', '#7950f2', '#e64980', '#868e96'
@@ -16,15 +17,114 @@ export const Sidebar = () => {
   const location = useLocation();
   const { 
     tags, selectedTagIds, toggleTagFilter, selectSingleTag, createTag, 
-    updateTag, deleteTag, language 
+    updateTag, deleteTag, language,
+    scopes, activeScopeIds, toggleScopeActive, fetchScopes,
+    addScope, deleteScope, updateScope
   } = useAppStore();
   
   const t = translations[language];
+
+  useEffect(() => {
+    fetchScopes();
+  }, []);
 
   const [newTagInput, setNewTagInput] = useState('');
   const [editingTag, setEditingTag] = useState<any>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
+
+  // Source Browser State
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<{ id?: number, path?: string } | null>(null);
+
+  const handleAddScope = () => {
+    setPickerTarget(null);
+    setIsPickerOpen(true);
+  };
+
+  const handleEditScope = (scope: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPickerTarget({ id: scope.id, path: scope.path });
+    setIsPickerOpen(true);
+  };
+
+  const onDirectorySelected = async (path: string) => {
+    if (pickerTarget?.id) {
+        // Edit existing
+        const name = path.split('/').pop() || path;
+        await updateScope(pickerTarget.id, { path, name });
+    } else {
+        // Add new
+        await addScope(path);
+    }
+    setIsPickerOpen(false);
+    fetchScopes();
+  };
+
+  const handleDeleteScope = (scope: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    modals.openConfirmModal({
+        title: t.deleteScopeTitle,
+        children: <Text size="sm">{t.deleteScope}</Text>,
+        labels: { confirm: t.delete, cancel: t.cancel },
+        confirmProps: { color: 'red' },
+        onConfirm: () => deleteScope(scope.id),
+    });
+  };
+
+  const renderScope = (scope: any) => {
+    const isActive = activeScopeIds.includes(scope.id);
+    return (
+        <Group 
+            key={scope.id} 
+            wrap="nowrap" 
+            gap={0}
+            style={{ 
+                cursor: 'pointer',
+                borderRadius: '4px',
+                backgroundColor: isActive ? 'var(--mantine-color-blue-light)' : 'transparent',
+                border: isActive ? '1px solid var(--mantine-color-blue-light-color)' : '1px solid transparent'
+            }}
+            onClick={(e) => {
+                e.stopPropagation();
+                toggleScopeActive(scope.id);
+            }}
+        >
+            <Group gap="xs" p="6px 8px" style={{ flex: 1, minWidth: 0 }}>
+                <Checkbox 
+                    size="xs" 
+                    checked={isActive} 
+                    readOnly
+                    tabIndex={-1}
+                    style={{ pointerEvents: 'none' }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <Text size="xs" fw={isActive ? 700 : 500} truncate>{scope.name}</Text>
+                    <Text size="10px" c="dimmed" truncate>{scope.path}</Text>
+                </div>
+            </Group>
+            
+            <Group gap={0} px={4}>
+                <ActionIcon 
+                    variant="subtle" 
+                    color="gray" 
+                    size="sm" 
+                    onClick={(e) => handleEditScope(scope, e)}
+                >
+                    <IconPencil size={12} />
+                </ActionIcon>
+                <ActionIcon 
+                    variant="subtle" 
+                    color="red" 
+                    size="sm" 
+                    onClick={(e) => handleDeleteScope(scope, e)}
+                >
+                    <IconTrash size={12} />
+                </ActionIcon>
+            </Group>
+        </Group>
+    );
+  };
 
   const renderTag = (tag: any) => {
     const isSelected = selectedTagIds.includes(tag.id);
@@ -143,34 +243,80 @@ export const Sidebar = () => {
   return (
     <>
       <AppShell.Navbar p="md" onClick={() => { if (location.pathname === '/settings') navigate('/'); }} style={{ cursor: location.pathname === '/settings' ? 'pointer' : 'default' }}>
-        <Stack gap="xs">
-          <ScrollArea h="calc(100vh - 80px)">
-            <Stack gap={4}>
-              {tags.filter(t => (t.isEditable as any) === 0).map(renderTag)}
+        <Stack gap="xs" style={{ height: '100%', overflow: 'hidden' }}>
+          <ScrollArea h="100%">
+            <Stack gap="xl">
+              
+              {/* SOURCES SECTION */}
+              <Stack gap="xs">
+                <Group justify="space-between" px="xs">
+                  <Group gap="xs">
+                    <IconDatabase size={16} c="blue" />
+                    <Text size="xs" fw={700} c="dimmed" style={{ letterSpacing: 1, textTransform: 'uppercase' }}>
+                      {t.managedScopes}
+                    </Text>
+                  </Group>
+                  <Tooltip label={t.addScope}>
+                    <ActionIcon variant="subtle" size="sm" onClick={handleAddScope}>
+                      <IconPlus size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+                <Stack gap={2}>
+                  {scopes.map(renderScope)}
+                  {scopes.length === 0 && (
+                      <Text size="xs" c="dimmed" px="xs" fs="italic">No sources configured.</Text>
+                  )}
+                </Stack>
+              </Stack>
 
-              <Box mt="sm" mb="sm">
-                <form onSubmit={(e) => { e.preventDefault(); handleCreateTag(); }} autoComplete="off">
-                    <TextInput 
-                        placeholder={t.newTagName}
-                        size="xs"
-                        value={newTagInput}
-                        onChange={(e) => setNewTagInput(e.currentTarget.value)}
-                        autoComplete="off"
-                        rightSection={
-                            <ActionIcon variant="transparent" onClick={handleCreateTag} title={t.createTag}>
-                                <IconPlus size={16} />
-                            </ActionIcon>
-                        }
-                    />
-                </form>
-              </Box>
+              <Divider variant="dashed" />
 
-              {tags.filter(t => (t.isEditable as any) !== 0).map(renderTag)}
-              {tags.length === 0 && <Text size="xs" c="dimmed">No tags created yet.</Text>}
+              {/* TAGS SECTION */}
+              <Stack gap="xs">
+                <Group gap="xs" px="xs">
+                  <IconTag size={16} c="appleBlue" />
+                  <Text size="xs" fw={700} c="dimmed" style={{ letterSpacing: 1, textTransform: 'uppercase' }}>
+                    {t.tags}
+                  </Text>
+                </Group>
+                <Stack gap={4}>
+                  {tags.filter(t => (t.isEditable as any) === 0).map(renderTag)}
+
+                  <Box mt="sm" mb="sm">
+                    <form onSubmit={(e) => { e.preventDefault(); handleCreateTag(); }} autoComplete="off">
+                        <TextInput 
+                            placeholder={t.newTagName}
+                            size="xs"
+                            value={newTagInput}
+                            onChange={(e) => setNewTagInput(e.currentTarget.value)}
+                            autoComplete="off"
+                            rightSection={
+                                <ActionIcon variant="transparent" onClick={handleCreateTag} title={t.createTag}>
+                                    <IconPlus size={16} />
+                                </ActionIcon>
+                            }
+                        />
+                    </form>
+                  </Box>
+
+                  {tags.filter(t => (t.isEditable as any) !== 0).map(renderTag)}
+                  {tags.length === 0 && <Text size="xs" c="dimmed">No tags created yet.</Text>}
+                </Stack>
+              </Stack>
+
             </Stack>
           </ScrollArea>
         </Stack>
       </AppShell.Navbar>
+
+      <DirectoryPickerModal 
+        opened={isPickerOpen}
+        onClose={() => setIsPickerOpen(false)}
+        onSelect={onDirectorySelected}
+        initialPath={pickerTarget?.path}
+        title={pickerTarget ? 'Change Source Directory' : undefined}
+      />
 
       <Modal opened={!!editingTag} onClose={() => setEditingTag(null)} title={t.editTag} size="xs" centered>
         <Stack gap="lg">

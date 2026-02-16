@@ -8,6 +8,7 @@ export interface ScopeSlice {
   fetchScopes: () => Promise<void>;
   addScope: (path: string) => Promise<void>;
   deleteScope: (id: number) => Promise<void>;
+  updateScope: (id: number, updates: Partial<Pick<Scope, 'name' | 'path'>>) => Promise<void>;
   refreshScope: (id: number) => Promise<void>;
   refreshAllScopes: () => Promise<void>;
   toggleScopeActive: (id: number) => void;
@@ -60,6 +61,23 @@ export const createScopeSlice: StateCreator<any, [], [], ScopeSlice> = (set, get
       }
       await get().fetchScopes();
       await get().fetchFiles();
+      set({ isLoading: false, error: null });
+    } catch (error: any) {
+      set({ error: error.message, isLoading: false });
+    }
+  },
+
+  updateScope: async (id, updates) => {
+    set({ isLoading: true });
+    try {
+      const response = await authFetch(`${API_BASE}/api/scopes/${id}`, get().token, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+      if (!response.ok) {
+          throw new Error('Failed to update scope');
+      }
+      await get().fetchScopes();
       set({ isLoading: false, error: null });
     } catch (error: any) {
       set({ error: error.message, isLoading: false });
